@@ -1,0 +1,24 @@
+<?xml version='1.0'?>
+<launch>
+    <arg name='gui' default='false' />
+    <arg name='input_cloud' value='/velodyne_points'/>
+        <node name="attention_clipper"
+            pkg="nodelet" type="nodelet"
+            args="standalone jsk_pcl/AttentionClipper">
+        <remap from="~input/points" to="$(arg input_cloud)" />
+        <rosparam>
+            initial_pos: [0, 0, 0]
+            initial_rot: [0, 0, 0]
+            dimension_x: 0.2
+            dimension_y: 0.2
+            dimension_z: 2
+            frame_id: velodyne
+        </rosparam>
+    </node>
+
+    <node name='extract_indices'
+        pkg='jsk_pcl_ros' type='extract_indices'>
+        <remap from='~input' to='$(arg input_cloud)' />
+        <remap from="~indices" to="attention_clipper/output/point_indices" />
+    </node>
+</launch>

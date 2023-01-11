@@ -1,3 +1,5 @@
+### python3 load_depth_points.py
+
 import sys
 import re
 import copy
@@ -39,6 +41,7 @@ except FileExistsError:
     # print('ldp:override pcd')
     pass
 
+### データ出力 ###
 scale = 50
 with open(path_w, mode='r+') as fp:
     fp.write('VERSION .7\n')
@@ -52,11 +55,12 @@ with open(path_w, mode='r+') as fp:
             # if k==2:
                 # o_data[k]*=5
 
-        o_data[0] = ( float(ln[2])+7 )/scale * 30
-        o_data[1] = (-float(ln[0])+300)/scale
-        o_data[2] = (-float(ln[1])+200)/scale
+        o_data[0] = ( float(ln[2])+7 )/scale * 30   #z
+        o_data[1] = (-float(ln[0])+300)/scale       #x
+        o_data[2] = (-float(ln[1])+200)/scale       #y
 
-        o_data[3]=(5e+6+float(ln[2])) #RGB8
+        o_data[3] = float(ln[2]) #RGB8
+        # o_data[3] = 0 #RGB8
         o_dmap.append(copy.deepcopy(o_data))
     # print("---end o_map---")
 

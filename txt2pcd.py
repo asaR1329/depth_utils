@@ -1,3 +1,5 @@
+### python3 txt2pcd.py 'number txtfile'
+
 import subprocess
 import time
 import sys
