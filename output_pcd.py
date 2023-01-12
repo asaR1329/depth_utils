@@ -1,4 +1,4 @@
-### python3 output_pcd.py <num_pcd> <interval> <start time>
+### python3 output_pcd.py <end time> <interval> <start time>
 
 import subprocess
 import time
@@ -6,29 +6,29 @@ import sys
 import os
 
 args = sys.argv
-fnum = args[1]
+fend = args[1]
 finterval = args[2]
 fstart = args[3]
-timer = '000'
-for tm in range(int(fnum)):
-    if tm <= 5:
+timer = '000000'    #ファイル名
+ntm  = 10           #スキップするデータ数
+
+for tm in range(int(fend)):
+    if tm <= ntm:
         print('nodata')
     else:
         tm *= int(finterval)
-        print(tm)
+        print('tm =',tm)
+
         try:
-            if tm < 10:
-                timer = '00'+ str(tm)
-            elif tm >= 10 and tm < 100:
-                timer = '0' + str(tm)
-            else:
-                timer = str(tm)
+            timer = timer[:6-len(str(tm))] + str(tm)
+
             if int(timer) < int(fstart):
-                print('skip')
-            elif os.path.isfile(f'output/0{timer}.pcd'):
-                cmd = f"rosrun pcl_ros pcd_to_pointcloud output/0{timer}.pcd 0.1 _frame_id:=velodyne"
-                res = subprocess.check_call(cmd.split(), timeout=0.8)
+                print('<start time')
+            elif os.path.isfile(f'output/{timer}.pcd'):
+                cmd = f"rosrun pcl_ros pcd_to_pointcloud output/{timer}.pcd 0.1 _frame_id:=velodyne"   #コマンド入力
+                res = subprocess.check_call(cmd.split(), timeout=1.0)
             else:
-                print('skip')
+                print('file not found')
+
         except subprocess.TimeoutExpired as e:
             print(e)

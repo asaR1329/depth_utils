@@ -48,7 +48,7 @@ def convert_pcd(fname):
                 o_data[0] = ( float(ln[2])+7  )/scale * 30      #z
                 o_data[1] = (-float(ln[0])+300)/scale           #x
                 o_data[2] = (-float(ln[1])+200)/scale           #y
-                o_data[3] = 10+float(ln[2])*0                   #RGB
+                o_data[3] = 10+float(ln[2])*1                   #RGB
                 o_dmap.append(copy.deepcopy(o_data))
 
             for ll in o_dmap:
@@ -79,7 +79,7 @@ def convert_pcds(fname):
 
         convert_pcd(cfname)
 
-        time.sleep(0.1)
+        # time.sleep(0.1)
 
 def main():
     args = sys.argv
