@@ -50,53 +50,93 @@ for m,ln in enumerate(img_ss, 1):
 print('img_cls :', img_cls.shape)
 
 ### 物体検出
-mom_ = []   #計算した重心を格納
+carDepthPoints = [] #segした車のdepth保存
+moms = []           #計算したすべての重心を格納
 img_dtc = copy.deepcopy(img_cls)
 test = True
 if test:
-    _, threshold = cv2.threshold(img_dtc, car_idx-1, 30, cv2.THRESH_BINARY) #閾値
-    contours, _ = cv2.findContours(threshold, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)   #輪郭探索
+    _, threshold = cv2.threshold(img_dtc, car_idx-1, car_idx+1, cv2.THRESH_BINARY)              #閾値
+    contours, hierarchy = cv2.findContours(threshold, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)   #輪郭探索
+
     font = cv2.FONT_HERSHEY_DUPLEX  #フォント指定
     count = 0                       #物体数
+    count_mo = 0                    #重心数
     n = 0
-    mom = []
+    mom = []                        #計算した重心を格納
+    mndp = 0                        #seg内の全depthの平均
+
     for cnt in contours:
         approx = cv2.approxPolyDP(cnt, 0.01*cv2.arcLength(cnt, True), True)
-        cv2.drawContours(img_dtc, [approx], 0, 10, 2)
+        cv2.drawContours(img_dtc, [approx], 0, 155, 1)                           #輪郭描画
         x = approx.ravel()[0]
         y = approx.ravel()[1]
         M = cv2.moments(cnt)        #モーメント
+        count_mo += 1
+
+        print('start moment =', count_mo)
 
         xn = int(M['m10']/M['m00'])
         yn = int(M['m01']/M['m00'])
-        mom = [xn, yn]
-        mom_.append(mom)
+        mom = [count_mo, xn, yn]
+        moms.append(mom)
         cv2.circle(img_dtc, (xn,yn), 2, (255,0,0), 1)
         n += 1
 
-        ###重心周りのピクセルの平均距離算出
+        ### bb作成
+        bbx, bby, bbw, bbh = cv2.boundingRect(cnt)
+        cv2.rectangle(img_dtc, (bbx,bby), (bbx+bbw-1,bby+bbh-1), car_idx-3, 2)
+
+        ### bb内のcarのdepthの平均算出
+        mndp = 0
+        count_dp = 0    #点の数
+        sum_dp = 0
+        print(bbx,bby,bbw,bbh)
+        for xm in range(bbx, bbx+bbw-1):
+            for ym in range(bby, bby+bbh-1):
+                try:
+                    if img_dtc[ym][xm] == car_idx:
+                        dd = dmap[xm][ym]
+                        sum_dp += dd
+                        if dd > 0:
+                            count_dp += 1
+                except IndexError:
+                    pass
+            try:
+                print(bbx+bbw/2,ym,img_dtc[ym][xm],car_idx)
+            except IndexError:
+                pass
+
+        if count_dp==0:
+            count_dp = 1
+
+        print(sum_dp,count_dp)
+        mndp = sum_dp/count_dp
+
+
+        ### 重心周りのピクセルの平均depth算出
         mdp = 0         #出力するdepth
         count_dp = 0    #点の数
         sum_dp = 0
         for ln in range(5):
-            for mn in range(5): #範囲指定
-                dd = dmap[yn+ln][xn+mn]
+            for mn in range(5):         #範囲指定
+                dd = dmap[yn+ln][xn+mn] #depth取得
                 sum_dp += dd
-                if dd > 0:
+                if dd > 0:              #点が存在したらcount++
                     count_dp += 1
-        if count_dp==0:
+        if count_dp==0:                 #重心周りに点がない場合
             # print('null dep')
             count_dp = 1
         mdp = sum_dp/count_dp
-        print('mom mdp :',mom,mdp)
         ###
+
+        print('mom,momdp,mndp:', mom, mdp, mndp)
 
         if len(approx) > 10:
             count += 1
             cv2.putText(img_dtc, 'CAR', (x,y), font, 1, (25))
 
     print('Number of Car =', count)
-    print('Moments :', mom_)
+    # print('Moments :', moms)
 
 ###出力画像の表示
 fig = plt.figure(figsize=(8,16))
