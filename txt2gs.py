@@ -84,7 +84,7 @@ if test:
 
         ### bb作成
         bbx, bby, bbw, bbh = cv2.boundingRect(cnt)
-        cv2.rectangle(img_dtc, (bbx,bby), (bbx+bbw-1,bby+bbh-1), car_color-3, 2)
+        cv2.rectangle(img_dtc, (bbx,bby), (bbx+bbw-1,bby+bbh-1), car_color-3, 1)
 
         ### bb内のcarのdepthの平均算出
         mndp=0
@@ -110,7 +110,7 @@ if test:
         if count_dp==0:
             count_dp = 1
 
-        print('depth data :',sum_dp,count_dp)
+        print(f'depth data : {sum_dp:8.2f} {count_dp:3}')
         mndp = sum_dp/count_dp
 
 
@@ -130,7 +130,8 @@ if test:
         mdp = sum_dp/count_dp
         ###
 
-        print('[mom] momdp meandp:', mom, mdp, mndp)
+        print('mom :', mom)
+        print(f'momdp meandp : {mdp:3.1f} {mndp:3.1f}')
 
         if len(approx) > 10:
             count += 1
@@ -140,10 +141,11 @@ if test:
     # print('Moments :', moms)
 
 ###出力画像の表示
-fig = plt.figure(figsize=(8,16))
+size=10
+fig = plt.figure(figsize=(size*1.6,size))
 num_fig = 4
-X=num_fig
-Y=1
+X=2
+Y=num_fig/X
 
 # for i in range(num_fig):
 

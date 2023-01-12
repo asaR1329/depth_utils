@@ -1,4 +1,5 @@
 ### python3 .py 'number of txt'
+### filename : '000000points.txt'
 
 import sys
 import os
