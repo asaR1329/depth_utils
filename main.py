@@ -7,6 +7,7 @@ import re
 import matplotlib.pyplot as plt
 import cv2
 import copy
+import time
 from pathlib import Path
 from PIL import Image
 
@@ -26,7 +27,7 @@ def input_depth_points(gfname):
 ### SS読み込み
 def input_SS_image(ssfname):
     img_ss = cv2.imread(ssfname, cv2.IMREAD_GRAYSCALE)
-    print('img_ss :', img_ss.shape)
+    # print('img_ss :', img_ss.shape)
 
     return img_ss
 ### SS画像
@@ -35,9 +36,9 @@ def input_SS_image(ssfname):
 def make_output_image(depth_points):
     dmap      = np.zeros((480,640))
     img_depth = np.zeros((480, 640), np.uint8)
-    xd=0
-    yd=0
-    cDepth=0
+    xd = 0
+    yd = 0
+    cDepth =0
 
     for ln in depth_points:
         xd = int(ln[1])
@@ -52,7 +53,7 @@ def make_output_image(depth_points):
 ### clustering
 def clustering(img_ss, img_depth):
     h, w = img_ss.shape
-    img_cls = img_depth
+    img_cls = copy.deepcopy(img_depth)
 
     for m,ln in enumerate(img_ss, 1):
         if m == 440:        #error
@@ -61,7 +62,7 @@ def clustering(img_ss, img_depth):
             if img_ss[m][n] == 8:               #抽出するクラス選択
                 img_cls[m][n] = car_color_       #クラス着色
 
-    print('img_cls :', img_cls.shape)
+    # print('img_cls :', img_cls.shape)
 
     return img_cls
 ### -> clustering image
@@ -160,7 +161,7 @@ def detection(img_cls, dmap):
         M = cv2.moments(cnt)        #モーメント
         count_mo += 1
 
-        print('\nstart moment =', count_mo)
+        print('\nmoment :', count_mo)
 
         try:
             xn = int(M['m10']/M['m00'])
@@ -193,9 +194,11 @@ def detection(img_cls, dmap):
 ### -> 重心とdepthデータ，処理後の画像
 
 ### 出力画像の表示
-def show_result(img_ss, img_depth, img_cls, img_dtc):
-    size=15
-    fig = plt.figure(figsize=(size*1.6,size))
+def show_images(img_ss, img_depth, img_cls, img_dtc):
+    windowSize=15
+
+    ### 画像の表示
+    fig = plt.figure(figsize=(windowSize*1.6,windowSize))
     num_fig = 4
     X=2
     Y=num_fig/X
@@ -215,6 +218,7 @@ def show_result(img_ss, img_depth, img_cls, img_dtc):
     fig4 = 4
     ax4 = fig.add_subplot(X, Y, fig4)
     plt.imshow(img_dtc)
+    ###
 
     plt.show()
 
@@ -222,25 +226,107 @@ def show_result(img_ss, img_depth, img_cls, img_dtc):
     cv2.destroyAllWindows()
 ###
 
+### 重心の軌跡表示
+def show_tracer():
+    ### 重心位置の表示
+    figMom = plt.figure(figsize=(windowSize,windowSize))
+    axMom = figMom.add_subplot(1,1,1)
+    axMom.set_title('Moments')
+    plt.xlabel('x axis')
+    plt.ylabel('depth')
+    tdx = [1,2,3]
+    tdz = [9,8,7]
+    plt.scatter(tdx,tdz,label='measurements',color='r',s=5)
+    plt.plot(tdx,tdz)
+    plt.legend()
+    ###
+    return 0
+###
 
-### para
-car_color_ = 20
-
-def main():
-    ### file name
-    args = sys.argv
-    gfname = f'input/{args[1]}points.txt'
-    ssfname = f'dataset/{args[2]}.png'
-    ### para
-
-    ### 処理
+### 1単位の処理まとめる
+def estimateMoms(gfname, ssfname):
     depth_points         = input_depth_points(gfname)
     img_ss               = input_SS_image(ssfname)
     img_depth, depth_map = make_output_image(depth_points)
     img_cls              = clustering(img_ss, img_depth)
-    moms_, img_dtc       = detection(img_cls, depth_map)
+    moms, img_dtc        = detection(img_cls, depth_map)
 
-    show_result(img_ss, img_depth, img_cls, img_dtc)
+    return moms, img_ss, img_depth, img_cls, img_dtc
+### 1フレームの重心，出力画像
+
+### 重心距離から同一か判定
+def decide_mom_id(tracer):
+    tolerance = 50
+    a = np.array([0,0])
+    b = np.array([0,0])
+    distance = 0
+    momID = 0
+
+    for i in range(1, len(tracer)):             # 全フレームに対して
+        momID = 0
+        for j in range(len(tracer[i])):         # i   の全重心
+            a = np.array(tracer[i][j])
+            for k in range(len(tracer[i-1])):   # i-1 の全重心
+                b = np.array(tracer[i-1][k])
+                distance = np.linalg.norm(b-a)
+                if distance<=tolerance:
+                    print(momID)
+                    momID += 1
+                    break
+    return 0
+###
+
+### 一定時間の重心の座標算出
+def make_tracer(fname):
+    tracer = []
+    tm = 10
+    ### tm frame分実行
+    try:
+
+        for ll in range(tm):
+            print(f'\n---estimate {ll}---')
+            ###ファイル名調整 fname:11500
+            f1name = '000000'
+            f2name = '000000'
+
+            f1  = int(fname) + ll*100   #11500+100n
+            f1name = f1name[:6-len(str(f1))] + str(f1) #011500
+            f2  = int(int(f1)*2/10)  #2300+
+            f2name = f2name[:6-len(str(f2))] + str(f2) #002300
+
+            gfname  = f'input/{f1name}points.txt'
+            ssfname = f'dataset/{f2name}.png'
+            print(gfname,ssfname)
+            ###
+
+            ### 重心と画像出力
+            moms, img_ss, img_depth, img_cls, img_dtc = estimateMoms(gfname, ssfname)
+            tracer.append(moms)
+            # show_images(img_ss, img_depth, img_cls, img_dtc)
+
+    except IndexError:
+        print('===tracer (index error)===')
+        print(*tracer, sep='\n')
+
+    ### id配布
+    decide_mom_id(tracer)
+
+    return tracer
+###
+
+### para
+car_color_ = 20
+###
+def main():
+    ### file name
+    args = sys.argv
+    fname = '000000'
+    fname = args[1]
+    ### para
+
+    ### 処理
+    tracer = make_tracer(fname)
+###
 
 if __name__ == "__main__":
     main()
