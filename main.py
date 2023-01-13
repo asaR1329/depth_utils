@@ -5,6 +5,7 @@ import os
 import sys
 import re
 import matplotlib.pyplot as plt
+import matplotlib.cm as cm
 import cv2
 import copy
 import time
@@ -77,7 +78,6 @@ def mean_depth_bbox(img_dtc, dmap, cnt):
     mndp        = 0          #平均depth
     count_dp_b  = 0    #点の数
     sum_dp_b    = 0
-    max_range   = 40    #考慮する最大距離
 
     for xm in range(bbx, bbx+bbw-1):
         for ym in range(bby, bby+bbh-1):
@@ -123,10 +123,10 @@ def mean_depth_mom(mom, dmap):
 ###
 
 ###
-def isCar(img_dtc, cnt, mom, count):
+def isCar(img_dtc, cnt, mom, min_cluster_size, count):
     font = cv2.FONT_HERSHEY_DUPLEX  #フォント指定
 
-    if len(cnt) > 30:
+    if len(cnt) > min_cluster_size:
         count += 1
         print(f' car number {count}')
         cv2.putText(img_dtc, f'CAR {count}', (mom[0],mom[1]), font, 0.5, (255))
@@ -163,29 +163,34 @@ def detection(img_cls, dmap):
 
         print('\nmoment :', count_mo)
 
-        try:
-            xn = int(M['m10']/M['m00'])
-            yn = int(M['m01']/M['m00'])
-            mom = [xn, yn]
-            moms.append(mom)
-            cv2.circle(img_dtc, (xn,yn), 2, (255,0,0), 1)
-            n += 1
+        if len(cnt)>=min_cluster_size:
+            try:
+                xn = int(M['m10']/M['m00'])
+                yn = int(M['m01']/M['m00'])
+                mom = [xn, yn]
+                cv2.circle(img_dtc, (xn,yn), 2, (255,0,0), 1)
+                n += 1
 
-            ### bb内のcarのdepthの平均算出
-            mndp = mean_depth_bbox(img_dtc, dmap, cnt)
+                ### bb内のcarのdepthの平均算出
+                mndp = mean_depth_bbox(img_dtc, dmap, cnt)
 
-            ### 重心周りのピクセルの平均depth算出
-            mdp = mean_depth_mom(mom, dmap)
+                ### 重心周りのピクセルの平均depth算出
+                mdp = mean_depth_mom(mom, dmap)
 
-            ### 輪郭のピクセル数がn以上でクラス判定
-            count = isCar(img_dtc, cnt, mom, count)
+                ### 輪郭のピクセル数がn以上でクラス判定
+                count = isCar(img_dtc, cnt, mom, min_cluster_size, count)
 
-            print(' contours :', len(cnt))                       #輪郭のピクセル数
-            print(' mom :', mom)
-            print(f' momdp meandp : {mdp:3.1f} {mndp:3.1f}')
+                print(f' contours :', len(cnt))                       #輪郭のピクセル数
+                print(f' mom :', mom)
+                print(f' momdp meandp : {mdp:3.1f} {mndp:3.1f}')
 
-        except ZeroDivisionError:
-            pass
+                mom.append(mndp)
+                moms.append(mom)
+
+            except ZeroDivisionError:
+                pass
+        else:
+            print(f'not cluster')
 
     print('\nNumber of Car =', count)
     print('Moments :', moms)
@@ -228,11 +233,21 @@ def show_images(img_ss, img_depth, img_cls, img_dtc):
 
 ### 重心の軌跡表示
 def show_tracer(tracer_wID):
+    windowSize = 8
+    figMom = plt.figure(figsize=(windowSize,windowSize))
+    axTr = figMom.add_subplot(1,1,1)
+    axTr.set_title('Tracer')
+    axTr.set_xlim(0,640)
+    # axTr.set_ylim(0,480) #y
+    axTr.set_ylim(-10,100) #depth
+    plt.xlabel('x axis')
+    plt.ylabel('depth')
+
     dx, dy = [], []
     op_x, op_y = [], []
 
-    print('\n---tracer_wID---')
-    print(*tracer_wID, sep='\n')
+    # print('\n---tracer_wID---')
+    # print(*tracer_wID, sep='\n')
 
     try:
         for ID in range(10): # 全IDに対して
@@ -241,15 +256,13 @@ def show_tracer(tracer_wID):
                 for j in range(len(tracer_wID[i])):
                     if ID == tracer_wID[i][j][0]:
                         dx.append(tracer_wID[i][j][1])
-                        dy.append(tracer_wID[i][j][2])
+                        # dy.append(tracer_wID[i][j][2])    # yaxis
+                        dy.append(tracer_wID[i][j][3])      # depth
 
             op_x.append(dx)
             op_y.append(dy)
 
-            # print(f'ID={ID}')
-            # print(op_x,op_y)
-
-            color=(ID/10, ID/20, ID/30)
+            color = cm.tab20(ID)
             plt.scatter(op_x[ID], op_y[ID], label=f'id={ID}', color=color, s=5)
             plt.legend()
             plt.plot(op_x[ID],op_y[ID],color=color)
@@ -258,12 +271,6 @@ def show_tracer(tracer_wID):
         pass
 
         ### 重心位置の表示
-    windowSize = 8
-    figMom = plt.figure(figsize=(windowSize,windowSize))
-    axTr = figMom.add_subplot(1,1,1)
-    axTr.set_title('Tracer')
-    plt.xlabel('x axis')
-    plt.ylabel('depth')
     plt.show()
     ###
     return 0
@@ -282,15 +289,15 @@ def estimateMoms(gfname, ssfname):
 
 ### 重心距離から同一か判定
 def decide_mom_id(tracer):
-    tolerance = 50
+    tolerance = 50      #許容する距離
+    momID = 0
+    maxID = 0           #最大のID
+    data = []           # 1frameの重心とID格納
+    tracer_wID = []     #IDつきの重心
+
     a = np.array([0,0])
     b = np.array([0,0])
     distance = 0
-    momID = 0
-    maxID = 0   #最大のID
-    data = []   # 1frameの重心とID格納
-    tracer_wID = [] #IDつきの重心
-
 
     for i in range(len(tracer)):             # 全フレームに対して
         momID = 0
@@ -305,20 +312,19 @@ def decide_mom_id(tracer):
                 a = np.array(tracer[i][j])
                 data.append(np.append(momID,a))
         else:
-            for j in range(len(tracer[i])):         # i   の全重心
+            for j in range(len(tracer[i])):     # i   の全重心
                 a = np.array(tracer[i][j])          # 現在の重心
 
                 for k in range(len(tracer[i-1])):   # i-1 の全重心
-                    # print('###',i-1,k)
-                    # print(tracer_wID[i-1][k][0])
-                    b = np.array([tracer_wID[i-1][k][1], tracer_wID[i-1][k][2]])    # 1frame前の重心
+                    b = np.array([tracer_wID[i-1][k][1], tracer_wID[i-1][k][2], tracer_wID[i-1][k][3]])    # 1frame前の重心
+                    # print(f' a={a}, b={b}')
                     distance = np.linalg.norm(b-a)
                     try:
                         if distance<=tolerance:
                             momID = tracer_wID[i-1][k][0]
-                            print(f'i{i} j{j} k{k}')
-                            print('      ',momID,tracer_wID[i-1][k])
-                            print('  ',i-1,k,momID,a,b,distance)
+                            # print(f' i{i} j{j} k{k}')
+                            # print('      ',momID,tracer_wID[i-1][k])
+                            # print('  ',i-1,k,momID,a,b,distance)
                             data.append(np.append(momID,a))
                             if maxID <= momID:
                                 maxID = momID
@@ -327,20 +333,19 @@ def decide_mom_id(tracer):
                         pass
 
         tracer_wID.append(data)     # 1frameの重心データ格納
-        print(f'---tracer_wID {i}---')
-        print(*tracer_wID, sep='\n')
+        # print(f'---tracer_wID {i}---')
+        # print(*tracer_wID, sep='\n')
 
     return tracer_wID
 ###
 
 ### 一定時間の重心の座標算出
-def make_tracer(fname):
+def make_tracer(fname, tm_):
     tracer = []
-    tm = 5
-    ### tm frame分実行
+    ### tm_ frame分実行
     try:
 
-        for ll in range(tm):
+        for ll in range(tm_):
             print(f'\n---estimate {ll}---')
             ###ファイル名調整 fname:11500
             f1name = '000000'
@@ -359,7 +364,7 @@ def make_tracer(fname):
             ### 重心と画像出力
             moms, img_ss, img_depth, img_cls, img_dtc = estimateMoms(gfname, ssfname)
             tracer.append(moms)
-            # show_images(img_ss, img_depth, img_cls, img_dtc)
+            if ll%5==0: show_images(img_ss, img_depth, img_cls, img_dtc)
 
     except IndexError:
         print('\n===tracer (index error)===')
@@ -378,8 +383,11 @@ def make_tracer(fname):
     return 0
 ###
 
-### para
-car_color_ = 20
+### parameter
+car_color_ = 20         # クラスタリングするときの色
+tm_ = 10                 # 実行フレーム数
+min_cluster_size = 20   # クラスタリングする最少数
+max_range   = 50        # 考慮する最大距離
 ###
 def main():
     ### file name
@@ -389,7 +397,7 @@ def main():
     ### para
 
     ### 処理
-    make_tracer(fname)
+    make_tracer(fname, tm_)
 ###
 
 if __name__ == "__main__":
