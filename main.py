@@ -227,18 +227,44 @@ def show_images(img_ss, img_depth, img_cls, img_dtc):
 ###
 
 ### 重心の軌跡表示
-def show_tracer():
-    ### 重心位置の表示
+def show_tracer(tracer_wID):
+    dx, dy = [], []
+    op_x, op_y = [], []
+
+    print('\n---tracer_wID---')
+    print(*tracer_wID, sep='\n')
+
+    try:
+        for ID in range(10): # 全IDに対して
+            dx, dy = [], []
+            for i in range(len(tracer_wID)):
+                for j in range(len(tracer_wID[i])):
+                    if ID == tracer_wID[i][j][0]:
+                        dx.append(tracer_wID[i][j][1])
+                        dy.append(tracer_wID[i][j][2])
+
+            op_x.append(dx)
+            op_y.append(dy)
+
+            # print(f'ID={ID}')
+            # print(op_x,op_y)
+
+            color=(ID/10, ID/20, ID/30)
+            plt.scatter(op_x[ID], op_y[ID], label=f'id={ID}', color=color, s=5)
+            plt.legend()
+            plt.plot(op_x[ID],op_y[ID],color=color)
+
+    except IndexError:
+        pass
+
+        ### 重心位置の表示
+    windowSize = 8
     figMom = plt.figure(figsize=(windowSize,windowSize))
-    axMom = figMom.add_subplot(1,1,1)
-    axMom.set_title('Moments')
+    axTr = figMom.add_subplot(1,1,1)
+    axTr.set_title('Tracer')
     plt.xlabel('x axis')
     plt.ylabel('depth')
-    tdx = [1,2,3]
-    tdz = [9,8,7]
-    plt.scatter(tdx,tdz,label='measurements',color='r',s=5)
-    plt.plot(tdx,tdz)
-    plt.legend()
+    plt.show()
     ###
     return 0
 ###
@@ -261,25 +287,56 @@ def decide_mom_id(tracer):
     b = np.array([0,0])
     distance = 0
     momID = 0
+    maxID = 0   #最大のID
+    data = []   # 1frameの重心とID格納
+    tracer_wID = [] #IDつきの重心
 
-    for i in range(1, len(tracer)):             # 全フレームに対して
+
+    for i in range(len(tracer)):             # 全フレームに対して
         momID = 0
-        for j in range(len(tracer[i])):         # i   の全重心
-            a = np.array(tracer[i][j])
-            for k in range(len(tracer[i-1])):   # i-1 の全重心
-                b = np.array(tracer[i-1][k])
-                distance = np.linalg.norm(b-a)
-                if distance<=tolerance:
-                    print(momID)
-                    momID += 1
-                    break
-    return 0
+        data = []
+
+        print(f'\n---tracer i={i}---')
+        print(*tracer, sep='\n')
+
+        if i==0:    # 最初のフレームに対して
+            for j in range(len(tracer[i])):
+                momID+=1
+                a = np.array(tracer[i][j])
+                data.append(np.append(momID,a))
+        else:
+            for j in range(len(tracer[i])):         # i   の全重心
+                a = np.array(tracer[i][j])          # 現在の重心
+
+                for k in range(len(tracer[i-1])):   # i-1 の全重心
+                    # print('###',i-1,k)
+                    # print(tracer_wID[i-1][k][0])
+                    b = np.array([tracer_wID[i-1][k][1], tracer_wID[i-1][k][2]])    # 1frame前の重心
+                    distance = np.linalg.norm(b-a)
+                    try:
+                        if distance<=tolerance:
+                            momID = tracer_wID[i-1][k][0]
+                            print(f'i{i} j{j} k{k}')
+                            print('      ',momID,tracer_wID[i-1][k])
+                            print('  ',i-1,k,momID,a,b,distance)
+                            data.append(np.append(momID,a))
+                            if maxID <= momID:
+                                maxID = momID
+                            break
+                    except IndexError:
+                        pass
+
+        tracer_wID.append(data)     # 1frameの重心データ格納
+        print(f'---tracer_wID {i}---')
+        print(*tracer_wID, sep='\n')
+
+    return tracer_wID
 ###
 
 ### 一定時間の重心の座標算出
 def make_tracer(fname):
     tracer = []
-    tm = 10
+    tm = 5
     ### tm frame分実行
     try:
 
@@ -305,13 +362,20 @@ def make_tracer(fname):
             # show_images(img_ss, img_depth, img_cls, img_dtc)
 
     except IndexError:
-        print('===tracer (index error)===')
+        print('\n===tracer (index error)===')
         print(*tracer, sep='\n')
 
     ### id配布
-    decide_mom_id(tracer)
+    tracer_wID = decide_mom_id(tracer)
+    print('\n=== tracer with ID ===')
+    for i in range(len(tracer_wID)):
+        print(*tracer_wID[i], sep='\n')
+    ###
 
-    return tracer
+    show_tracer(tracer_wID)
+
+
+    return 0
 ###
 
 ### para
@@ -325,7 +389,7 @@ def main():
     ### para
 
     ### 処理
-    tracer = make_tracer(fname)
+    make_tracer(fname)
 ###
 
 if __name__ == "__main__":
