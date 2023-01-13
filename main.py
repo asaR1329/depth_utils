@@ -1,4 +1,4 @@
-### python3 .py 'gray file name' 'ss file name'
+### python3 .py 'gray file name' 'ss file name' '時間幅'
 
 import numpy as np
 import os
@@ -82,7 +82,7 @@ def mean_depth_bbox(img_dtc, dmap, cnt):
     for xm in range(bbx, bbx+bbw-1):
         for ym in range(bby, bby+bbh-1):
             try:    #配列外ならスキップ
-                if img_dtc[ym][xm]==car_color_ and dmap[xm][ym]<=max_range:  # carかつmax_range以内
+                if img_dtc[ym][xm]==car_color_ and dmap[xm][ym]<=max_range_:  # carかつmax_range_以内
                     dd = dmap[xm][ym]
                     sum_dp_b += dd
                     if dd > 0:
@@ -123,11 +123,11 @@ def mean_depth_mom(mom, dmap):
     return mdp
 ###
 
-###
-def isCar(img_dtc, cnt, mom, min_cluster_size, count):
+### 輪郭の数が一定以上で物体判定
+def isCar(img_dtc, cnt, mom, min_cluster_size_, count):
     font = cv2.FONT_HERSHEY_DUPLEX  #フォント指定
 
-    if len(cnt) > min_cluster_size:
+    if len(cnt) > min_cluster_size_:
         count += 1
         print(f' car number {count}')
         cv2.putText(img_dtc, f'CAR {count}', (mom[0],mom[1]), font, 0.5, (255))
@@ -164,7 +164,7 @@ def detection(img_cls, dmap):
 
         print('\nmoment :', count_mo)
 
-        if len(cnt)>=min_cluster_size:
+        if len(cnt)>=min_cluster_size_:
             try:
                 xn = int(M['m10']/M['m00'])
                 yn = int(M['m01']/M['m00'])
@@ -176,10 +176,10 @@ def detection(img_cls, dmap):
                 mndp = mean_depth_bbox(img_dtc, dmap, cnt)
 
                 ### 重心周りのピクセルの平均depth算出
-                mdp = mean_depth_mom(mom, dmap)
+                mdp = mean_depth_mom(mom, dmap) #使用しない
 
                 ### 輪郭のピクセル数がn以上でクラス判定
-                count = isCar(img_dtc, cnt, mom, min_cluster_size, count)
+                count = isCar(img_dtc, cnt, mom, min_cluster_size_, count)
 
                 print(f' contours :', len(cnt))                       #輪郭のピクセル数
                 print(f' mom :', mom)
@@ -226,10 +226,9 @@ def show_images(img_ss, img_depth, img_cls, img_dtc):
     plt.imshow(img_dtc)
     ###
 
-    plt.show()
-
-    cv2.waitKey(0)
-    cv2.destroyAllWindows()
+    plt.show(block=False)
+    key = cv2.waitKey(0)
+    if key==ord('d'): plt.close(fig)
 ###
 
 ### 重心の軌跡表示
@@ -248,7 +247,7 @@ def show_tracer(tracer_wID):
     op_x, op_y = [], []
 
     try:
-        for ID in range(10): # 全IDに対して
+        for ID in range(0,10): # 全IDに対して
             dx, dy = [], []
             for i in range(len(tracer_wID)):
                 for j in range(len(tracer_wID[i])):
@@ -380,19 +379,21 @@ def make_tracer(fname, tm_):
 ###
 
 ### parameter
-car_color_ = 20         # クラスタリングするときの色
-tm_ = 15                # 実行フレーム数
-min_cluster_size = 20   # クラスタリングする最少数
-max_range   = 50        # 考慮する最大距離
-tolerance = 50          # 同一判定で許容する距離
+car_color_          = 20    # クラスタリングするときの色
+tm_                 = 10    # 実行フレーム数
+min_cluster_size_   = 20    # クラスタリングする最少数
+max_range_          = 50    # 考慮する最大距離
+tolerance           = 50    # 同一物体と許容する距離
 ###
 def main():
     ### file name
     args = sys.argv
     fname = '000000'
     fname = args[1]
-    ### para
-    np.set_printoptions(precision=6, floatmode='fixed', suppress=True)
+    timeWidth = args[2]
+    ### param
+    tm_ = int(timeWidth)
+    np.set_printoptions(precision=3, floatmode='fixed', suppress=True)
 
     ### 処理
     make_tracer(fname, tm_)
