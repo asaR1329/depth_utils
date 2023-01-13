@@ -109,8 +109,9 @@ def mean_depth_mom(mom, dmap):
     xn = mom[0]
     yn = mom[1]
 
-    for ln in range(5):
-        for mn in range(5):         #範囲指定
+    length = 5
+    for ln in range(length):
+        for mn in range(length):         #範囲指定
             dd = dmap[yn+ln][xn+mn] #depth取得
             sum_dp += dd
             if dd > 0:              #点が存在したらcount++
@@ -246,9 +247,6 @@ def show_tracer(tracer_wID):
     dx, dy = [], []
     op_x, op_y = [], []
 
-    # print('\n---tracer_wID---')
-    # print(*tracer_wID, sep='\n')
-
     try:
         for ID in range(10): # 全IDに対して
             dx, dy = [], []
@@ -289,7 +287,6 @@ def estimateMoms(gfname, ssfname):
 
 ### 重心距離から同一か判定
 def decide_mom_id(tracer):
-    tolerance = 50      #許容する距離
     momID = 0
     maxID = 0           #最大のID
     data = []           # 1frameの重心とID格納
@@ -299,12 +296,12 @@ def decide_mom_id(tracer):
     b = np.array([0,0])
     distance = 0
 
+    print(f'\n---all car moment points---')
+    print(*tracer, sep='\n')
+
     for i in range(len(tracer)):             # 全フレームに対して
         momID = 0
         data = []
-
-        print(f'\n---tracer i={i}---')
-        print(*tracer, sep='\n')
 
         if i==0:    # 最初のフレームに対して
             for j in range(len(tracer[i])):
@@ -316,10 +313,10 @@ def decide_mom_id(tracer):
                 a = np.array(tracer[i][j])          # 現在の重心
 
                 for k in range(len(tracer[i-1])):   # i-1 の全重心
-                    b = np.array([tracer_wID[i-1][k][1], tracer_wID[i-1][k][2], tracer_wID[i-1][k][3]])    # 1frame前の重心
-                    # print(f' a={a}, b={b}')
-                    distance = np.linalg.norm(b-a)
                     try:
+                        b = np.array([tracer_wID[i-1][k][1], tracer_wID[i-1][k][2], tracer_wID[i-1][k][3]])    # 1frame前の重心
+                        # print(f' a={a}, b={b}')
+                        distance = np.linalg.norm(b-a)
                         if distance<=tolerance:
                             momID = tracer_wID[i-1][k][0]
                             # print(f' i{i} j{j} k{k}')
@@ -333,8 +330,6 @@ def decide_mom_id(tracer):
                         pass
 
         tracer_wID.append(data)     # 1frameの重心データ格納
-        # print(f'---tracer_wID {i}---')
-        # print(*tracer_wID, sep='\n')
 
     return tracer_wID
 ###
@@ -346,7 +341,7 @@ def make_tracer(fname, tm_):
     try:
 
         for ll in range(tm_):
-            print(f'\n---estimate {ll}---')
+            print(f'\n---estimate frame={ll}---')
             ###ファイル名調整 fname:11500
             f1name = '000000'
             f2name = '000000'
@@ -358,13 +353,14 @@ def make_tracer(fname, tm_):
 
             gfname  = f'input/{f1name}points.txt'
             ssfname = f'dataset/{f2name}.png'
-            print(gfname,ssfname)
+            print(f' {gfname}, {ssfname}')
             ###
 
             ### 重心と画像出力
             moms, img_ss, img_depth, img_cls, img_dtc = estimateMoms(gfname, ssfname)
             tracer.append(moms)
-            if ll%5==0: show_images(img_ss, img_depth, img_cls, img_dtc)
+            if ll%5==0: show_images(img_ss, img_depth, img_cls, img_dtc) # n frameごとに
+            ###
 
     except IndexError:
         print('\n===tracer (index error)===')
@@ -373,9 +369,9 @@ def make_tracer(fname, tm_):
     ### id配布
     tracer_wID = decide_mom_id(tracer)
     print('\n=== tracer with ID ===')
+    print('frame | ID | x | y | depth |')
     for i in range(len(tracer_wID)):
-        print(*tracer_wID[i], sep='\n')
-    ###
+        print(f'frame ={i:2d} {tracer_wID[i]}')
 
     show_tracer(tracer_wID)
 
@@ -385,9 +381,10 @@ def make_tracer(fname, tm_):
 
 ### parameter
 car_color_ = 20         # クラスタリングするときの色
-tm_ = 10                 # 実行フレーム数
+tm_ = 15                # 実行フレーム数
 min_cluster_size = 20   # クラスタリングする最少数
 max_range   = 50        # 考慮する最大距離
+tolerance = 50          # 同一判定で許容する距離
 ###
 def main():
     ### file name
@@ -395,6 +392,7 @@ def main():
     fname = '000000'
     fname = args[1]
     ### para
+    np.set_printoptions(precision=6, floatmode='fixed', suppress=True)
 
     ### 処理
     make_tracer(fname, tm_)
