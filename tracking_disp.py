@@ -1,13 +1,12 @@
-### python3 .py 'gray file name' 'ss file name' '時間幅'
+### python3 .py 'file name' '時間幅'
 ### 230116
 
 import numpy as np
-import pandas as pd
-import matplotlib.pyplot as plt
-import matplotlib.cm as cm
 import os
 import sys
 import re
+import matplotlib.pyplot as plt
+import matplotlib.cm as cm
 import cv2
 import copy
 import time
@@ -26,12 +25,16 @@ def input_depth_points(gfname):
     return depth_points
 ### -> depth点群
 
+def input_dispariy_image(gfname):
+    img_disp = cv2.imread(gfname, cv2.IMREAD_GRAYSCALE)
+    # print('img_disp :', img_disp.shape)
+    return img_disp
+### -> depth image
 
 ### SS読み込み
 def input_SS_image(ssfname):
     img_ss = cv2.imread(ssfname, cv2.IMREAD_GRAYSCALE)
     # print('img_ss :', img_ss.shape)
-
     return img_ss
 ### SS画像
 
@@ -41,14 +44,12 @@ def make_output_image(depth_points):
     img_depth = np.zeros((480, 640), np.uint8)
     xd = 0
     yd = 0
-    cDepth =0
+    cDepth = 10
 
-    for ln in depth_points:
-        xd = int(ln[1])
-        yd = int(ln[0])
-        dmap[xd][yd] = float(ln[2])
-        cDepth = 10 #+ int(float(ln[2]))
-        img_depth[xd][yd] = cDepth        #depth着色
+    for i in range(480):
+        for j in range(640):
+            dmap[i][j] = depth_points[i][j]
+            img_depth[i][j] = cDepth
 
     return img_depth, dmap
 ### -> depth image, depth map
@@ -83,7 +84,7 @@ def mean_depth_bbox(img_dtc, dmap, cnt):
     for xm in range(bbx, bbx+bbw-1):
         for ym in range(bby, bby+bbh-1):
             try:    #配列外ならスキップ
-                if img_dtc[ym][xm]==car_color_ and dmap[xm][ym]>0: watcher.append(dmap[xm][ym])
+                if img_dtc[ym][xm]==car_color_ and dmap[xm][ym]>0: watcher.append([xm, ym, dmap[xm][ym]])
                 dd = dmap[xm][ym]
                 if img_dtc[ym][xm]==car_color_ and dd<=max_range_: # 選択したクラスかつ max_range_以内の点を考慮
                     sum_dp_b += dd
@@ -203,7 +204,7 @@ def detection(img_cls, dmap):
 
 ### 出力画像の表示
 def show_images(img_ss, img_depth, img_cls, img_dtc):
-    windowSize=8
+    windowSize=15
 
     ### 画像の表示
     fig = plt.figure(figsize=(windowSize*1.6,windowSize))
@@ -277,7 +278,7 @@ def show_tracer(tracer_wID):
 
 ### 1単位の処理まとめる
 def estimateMoms(gfname, ssfname):
-    depth_points         = input_depth_points(gfname)
+    depth_points         = input_dispariy_image(gfname)
     img_ss               = input_SS_image(ssfname)
     img_depth, depth_map = make_output_image(depth_points)
     img_cls              = clustering(img_ss, img_depth)
@@ -317,9 +318,13 @@ def decide_mom_id(tracer):
                 for k in range(len(tracer[i-1])):   # i-1 の全重心
                     try:
                         b = np.array([tracer_wID[i-1][k][1], tracer_wID[i-1][k][2], tracer_wID[i-1][k][3]])    # 1frame前の重心
+                        # print(f' a={a}, b={b}')
                         distance = np.linalg.norm(b-a)
                         if distance<=tolerance:
                             momID = tracer_wID[i-1][k][0]
+                            # print(f' i{i} j{j} k{k}')
+                            # print('      ',momID,tracer_wID[i-1][k])
+                            # print('  ',i-1,k,momID,a,b,distance)
                             data.append(np.append(momID,a))
                             if maxID <= momID:
                                 maxID = momID
@@ -340,24 +345,25 @@ def make_tracer(fname, tm_):
 
         for ll in range(tm_):
             print(f'\n---estimate frame={ll}---')
-            ###ファイル名調整 fname:11500
+            ###ファイル名調整 fname:114
             f1name = '000000'
             f2name = '000000'
 
-            f1  = int(fname) + ll*50   #11500+50n
-            f1name = f1name[:6-len(str(f1))] + str(f1) #011500
-            f2  = int(int(f1)*2/10)  #2300+
-            f2name = f2name[:6-len(str(f2))] + str(f2) #002300
+            f1  = int(fname) + ll*2     #114+2n
+            f1name = f1name[:6-len(str(f1))] + str(f1) #000114
+            f2  = int(f1)
+            f2name = f2name[:6-len(str(f2))] + str(f2) #000114
 
-            gfname  = f'input/{f1name}points.txt'
-            ssfname = f'dataset/{f2name}.png'
+            gfname  = f'disparity/event/{f1name}.png'
+            ssfname = f'Segmentation/{f2name}.png'
             print(f' {gfname}, {ssfname}')
             ###
 
             ### 重心と画像出力
             moms, img_ss, img_depth, img_cls, img_dtc = estimateMoms(gfname, ssfname)
             tracer.append(moms)
-            if ll%number_image==0: show_images(img_ss, img_depth, img_cls, img_dtc) # n frameごとに
+            dt = 2
+            if ll%dt==0: show_images(img_ss, img_depth, img_cls, img_dtc) # n frameごとに
             ###
 
     except IndexError:
@@ -367,28 +373,11 @@ def make_tracer(fname, tm_):
     ### id配布
     tracer_wID = decide_mom_id(tracer)
     print('\n=== tracer with ID ===')
-    print('frame    | ID | x | y | depth |')
+    print('frame | ID | x | y | depth |')
     for i in range(len(tracer_wID)):
-        print(f'frame ={i:3d} {tracer_wID[i]}')
+        print(f'frame ={i:2d} {tracer_wID[i]}')
 
-    scores = pd.Series(watcher)
-    bins = np.linspace(0,200,11)
-    freq = scores.value_counts(bins=bins, sort=False)
-    class_value = (bins[:-1] + bins[1:]) /2
-    rel_freq = freq / scores.count()
-    cum_freq = freq.cumsum()
-    rel_cum_freq = rel_freq.cumsum()
-    dist = pd.DataFrame(
-        {
-            "depth": class_value,
-            "count": freq,
-            "相対度数": rel_freq,
-            "累積度数": cum_freq,
-            "相対累積度数": rel_cum_freq,
-        },
-        index=freq.index
-    )
-    dist.plot.bar(x="depth", y="count", width=1, ec="k", lw=2)
+    # print(f'{watcher}')
 
     show_tracer(tracer_wID)
 
@@ -397,11 +386,10 @@ def make_tracer(fname, tm_):
 
 ### parameter
 car_color_          = 20    # クラスタリングするときの色
-min_cluster_size_   = 20    # クラスタリングする点の最少数
-tolerance           = 50    # 同一物体と許容する距離
-max_range_          = 50    # 考慮する最大距離
 tm_                 = 10    # 実行フレーム数
-number_image        =  5    # nフレームごとに画像出力
+min_cluster_size_   = 20    # クラスタリングする点の最少数
+max_range_          = 60    # 考慮する最大距離
+tolerance           = 50    # 同一物体と許容する距離
 watcher             = []    # テスト用
 ###
 def main():
