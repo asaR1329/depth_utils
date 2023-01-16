@@ -1,4 +1,5 @@
 ### python3 .py 'gray file name' 'ss file name' '時間幅'
+### 230116
 
 import numpy as np
 import os
