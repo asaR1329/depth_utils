@@ -75,15 +75,15 @@ def mean_depth_bbox(img_dtc, dmap, cnt):
     cv2.rectangle(img_dtc, (bbx,bby), (bbx+bbw-1,bby+bbh-1), car_color_-3, 1)
 
     ### bb内のcarのdepthの平均算出
-    mndp        = 0          #平均depth
-    count_dp_b  = 0    #点の数
-    sum_dp_b    = 0
-
+    mndp        = 0 #平均depth
+    count_dp_b  = 0 #点の数
+    sum_dp_b    = 0 #depthの合計
     for xm in range(bbx, bbx+bbw-1):
         for ym in range(bby, bby+bbh-1):
             try:    #配列外ならスキップ
-                if img_dtc[ym][xm]==car_color_ and dmap[xm][ym]<=max_range_:  # carかつmax_range_以内
-                    dd = dmap[xm][ym]
+                if img_dtc[ym][xm]==car_color_ and dmap[xm][ym]>0: watcher.append([xm, ym, dmap[xm][ym]])
+                dd = dmap[xm][ym]
+                if img_dtc[ym][xm]==car_color_ and dd<=max_range_: # 選択したクラスかつ max_range_以内の点を考慮
                     sum_dp_b += dd
                     if dd > 0:
                         count_dp_b += 1
@@ -239,7 +239,7 @@ def show_tracer(tracer_wID):
     axTr.set_title('Tracer')
     axTr.set_xlim(0,640)
     # axTr.set_ylim(0,480) #y
-    axTr.set_ylim(-10,100) #depth
+    axTr.set_ylim(-1,100) #depth
     plt.xlabel('x axis')
     plt.ylabel('depth')
 
@@ -295,6 +295,7 @@ def decide_mom_id(tracer):
     b = np.array([0,0])
     distance = 0
 
+    np.set_printoptions(precision=3, floatmode='fixed', suppress=True)
     print(f'\n---all car moment points---')
     print(*tracer, sep='\n')
 
@@ -345,7 +346,7 @@ def make_tracer(fname, tm_):
             f1name = '000000'
             f2name = '000000'
 
-            f1  = int(fname) + ll*100   #11500+100n
+            f1  = int(fname) + ll*50   #11500+50n
             f1name = f1name[:6-len(str(f1))] + str(f1) #011500
             f2  = int(int(f1)*2/10)  #2300+
             f2name = f2name[:6-len(str(f2))] + str(f2) #002300
@@ -358,7 +359,8 @@ def make_tracer(fname, tm_):
             ### 重心と画像出力
             moms, img_ss, img_depth, img_cls, img_dtc = estimateMoms(gfname, ssfname)
             tracer.append(moms)
-            if ll%5==0: show_images(img_ss, img_depth, img_cls, img_dtc) # n frameごとに
+            dt = 2
+            if ll%dt==0: show_images(img_ss, img_depth, img_cls, img_dtc) # n frameごとに
             ###
 
     except IndexError:
@@ -372,8 +374,9 @@ def make_tracer(fname, tm_):
     for i in range(len(tracer_wID)):
         print(f'frame ={i:2d} {tracer_wID[i]}')
 
-    show_tracer(tracer_wID)
+    # print(f'{watcher}')
 
+    show_tracer(tracer_wID)
 
     return 0
 ###
@@ -381,9 +384,10 @@ def make_tracer(fname, tm_):
 ### parameter
 car_color_          = 20    # クラスタリングするときの色
 tm_                 = 10    # 実行フレーム数
-min_cluster_size_   = 20    # クラスタリングする最少数
-max_range_          = 50    # 考慮する最大距離
+min_cluster_size_   = 20    # クラスタリングする点の最少数
+max_range_          = 60    # 考慮する最大距離
 tolerance           = 50    # 同一物体と許容する距離
+watcher             = []    # テスト用
 ###
 def main():
     ### file name
