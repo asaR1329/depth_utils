@@ -62,7 +62,7 @@ def clustering(img_ss, img_depth):
         if m == 440:        #error
             break
         for n in range(w):
-            if img_ss[m][n] == 8:               #抽出するクラス選択
+            if img_ss[m][n] == class_idx_:               #抽出するクラス選択
                 img_cls[m][n] = car_color_       #クラス着色
 
     # print('img_cls :', img_cls.shape)
@@ -80,23 +80,26 @@ def mean_depth_bbox(img_dtc, dmap, cnt):
     mndp        = 0 #平均depth
     count_dp_b  = 0 #点の数
     sum_dp_b    = 0 #depthの合計
+    global watcher
     for xm in range(bbx, bbx+bbw-1):
         for ym in range(bby, bby+bbh-1):
             try:    #配列外ならスキップ
-                if img_dtc[ym][xm]==car_color_ and dmap[xm][ym]>0: watcher.append(dmap[xm][ym])
                 dd = dmap[xm][ym]
                 if img_dtc[ym][xm]==car_color_ and dd<=max_range_: # 選択したクラスかつ max_range_以内の点を考慮
                     sum_dp_b += dd
-                    if dd > 0:
+                    if dd > 0:  #dephtが存在したら数える
                         count_dp_b += 1
+                if img_dtc[ym][xm]==car_color_ and dmap[xm][ym]>0: watcher.append([xm, dmap[xm][ym]])
             except IndexError:
                 pass
 
-    if count_dp_b==0:
+    if count_dp_b==0:   # 0わり
         count_dp_b = 1
 
     mndp = sum_dp_b/count_dp_b
 
+    if len(watcher)>=30: show_scatter(watcher)
+    watcher=[]
     print(f' depth data : {sum_dp_b:8.2f} {count_dp_b:3}')
     ###
 
@@ -275,7 +278,32 @@ def show_tracer(tracer_wID):
     return 0
 ###
 
-### 1単位の処理まとめる
+###
+def show_scatter(data):
+    windowSize = 8
+    figw = plt.figure(figsize=(windowSize,windowSize))
+    axW = figw.add_subplot(1,1,1)
+    axW.set_title('watch')
+    axW.set_xlim(0,640)
+    axW.set_ylim(-1,200) #depth
+    plt.xlabel('x axis')
+    plt.ylabel('depth')
+
+    dx, dy = [], []
+    op_x, op_y = [], []
+
+    for nn in data:
+        dx.append(nn[0])
+        dy.append(nn[1])
+
+    op_x.append(dx)
+    op_y.append(dy)
+
+    plt.scatter(op_x, op_y, s=5)
+    plt.show()
+###
+
+### 1frameの処理まとめる
 def estimateMoms(gfname, ssfname):
     depth_points         = input_depth_points(gfname)
     img_ss               = input_SS_image(ssfname)
@@ -357,7 +385,7 @@ def make_tracer(fname, tm_):
             ### 重心と画像出力
             moms, img_ss, img_depth, img_cls, img_dtc = estimateMoms(gfname, ssfname)
             tracer.append(moms)
-            if ll%number_image==0: show_images(img_ss, img_depth, img_cls, img_dtc) # n frameごとに
+            if ll%number_image_==0: show_images(img_ss, img_depth, img_cls, img_dtc) # n frameごとに
             ###
 
     except IndexError:
@@ -370,38 +398,27 @@ def make_tracer(fname, tm_):
     print('frame    | ID | x | y | depth |')
     for i in range(len(tracer_wID)):
         print(f'frame ={i:3d} {tracer_wID[i]}')
+    ###
 
-    scores = pd.Series(watcher)
-    bins = np.linspace(0,200,11)
-    freq = scores.value_counts(bins=bins, sort=False)
-    class_value = (bins[:-1] + bins[1:]) /2
-    rel_freq = freq / scores.count()
-    cum_freq = freq.cumsum()
-    rel_cum_freq = rel_freq.cumsum()
-    dist = pd.DataFrame(
-        {
-            "depth": class_value,
-            "count": freq,
-            "相対度数": rel_freq,
-            "累積度数": cum_freq,
-            "相対累積度数": rel_cum_freq,
-        },
-        index=freq.index
-    )
-    dist.plot.bar(x="depth", y="count", width=1, ec="k", lw=2)
+    ### watch
+    # show_scatter(watcher)
+    ###
 
+
+    ### 軌跡表示
     show_tracer(tracer_wID)
 
     return 0
 ###
 
 ### parameter
+class_idx_          =  8    # 抽出するクラス 3:human 8:car
 car_color_          = 20    # クラスタリングするときの色
 min_cluster_size_   = 20    # クラスタリングする点の最少数
 tolerance           = 50    # 同一物体と許容する距離
-max_range_          = 50    # 考慮する最大距離
+max_range_          = 70    # 考慮する最大距離
 tm_                 = 10    # 実行フレーム数
-number_image        =  5    # nフレームごとに画像出力
+number_image_       =  1    # nフレームごとに画像出力
 watcher             = []    # テスト用
 ###
 def main():
