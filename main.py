@@ -1,5 +1,5 @@
 ### python3 .py 'gray file name' 'ss file name' '時間幅'
-### 230116
+### 230118
 
 import numpy as np
 import pandas as pd
@@ -98,9 +98,9 @@ def mean_depth_bbox(img_dtc, dmap, cnt):
 
     mndp = sum_dp_b/count_dp_b
 
-    if len(watcher)>=30: show_scatter(watcher)
+    # if len(watcher)>=30: show_scatter(watcher)
     watcher=[]
-    print(f' depth data : {sum_dp_b:8.2f} {count_dp_b:3}')
+    print(f' depth data : sum={sum_dp_b:8.2f} count={count_dp_b:3}')
     ###
 
     return mndp
@@ -186,7 +186,7 @@ def detection(img_cls, dmap):
                 ### 輪郭のピクセル数がn以上でクラス判定
                 count = isCar(img_dtc, cnt, mom, min_cluster_size_, count)
 
-                print(f' contours :', len(cnt))                       #輪郭のピクセル数
+                print(f' contours length:', len(cnt))                       #輪郭のピクセル数
                 print(f' mom :', mom)
                 print(f' momdp meandp : {mdp:3.1f} {mndp:3.1f}')
 
@@ -397,7 +397,8 @@ def make_tracer(fname, tm_):
     print('\n=== tracer with ID ===')
     print('frame    | ID | x | y | depth |')
     for i in range(len(tracer_wID)):
-        print(f'frame ={i:3d} {tracer_wID[i]}')
+        for j in range(len(tracer_wID[i])):
+            print(f'frame ={i:3d} ID ={tracer_wID[i][j][0]:2.0f} x = {tracer_wID[i][j][1]:3.0f} y = {tracer_wID[i][j][2]:3.0f} depth = {tracer_wID[i][j][3]:.4g}')
     ###
 
     ### watch
@@ -418,7 +419,7 @@ min_cluster_size_   = 20    # クラスタリングする点の最少数
 tolerance           = 50    # 同一物体と許容する距離
 max_range_          = 70    # 考慮する最大距離
 tm_                 = 10    # 実行フレーム数
-number_image_       =  1    # nフレームごとに画像出力
+number_image_       =  4    # nフレームごとに画像出力
 watcher             = []    # テスト用
 ###
 def main():
