@@ -5,13 +5,14 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 import matplotlib.cm as cm
-import os
-import sys
-import re
-import cv2
 import copy
+import csv
+import cv2
 import glob
 import math
+import os
+import re
+import sys
 import time
 import yaml
 from pathlib import Path
@@ -33,11 +34,15 @@ class depthPoint:
 ### depht読み込み
 def input_depth_points(gfname):
     depth_points=[]                         #depth格納
+    count = 0
 
     with open(gfname) as fp:
         for ln in fp:
             data = ln.strip().split(' ')
             depth_points.append(data);
+            count += 1
+
+    print(f' number of points = {count}')
 
     return depth_points
 ### -> depth点群
@@ -363,9 +368,13 @@ def show_tracer(tracer_wID):
                 dy = tracer_wID[i][j][3]
                 zs.append(copy.deepcopy([dx,dy]))
                 print(f' dx={dx:7.3f}, dy={dy:7.3f}')
+
     P = np.diag([1,1,1,1]) #位置と速度の共分散行列
     R = np.diag([1, 1])           #観測の共分散行列
     Ms, Ps = run_kf(count=200, R=R, Q=0.01, P=P, zs=zs, do_plot=True)
+
+    print(f'===output===')
+    output2csv(Ms)
     ###
 
     return 0
@@ -395,6 +404,13 @@ def show_scatter(data):
     plt.scatter(op_x, op_y, s=5)
     plt.show()
 
+###
+
+###
+def show_tracerwID(tracer_wID):
+    for i in range(len(tracer_wID)):
+        for j in range(len(tracer_wID[i])):
+            print(f'frame ={i:3d} ID ={tracer_wID[i][j][0]:2.0f} x = {tracer_wID[i][j][1]:7.3f} y = {tracer_wID[i][j][2]:7.3f} depth = {tracer_wID[i][j][3]:.4g}')
 ###
 
 ###
@@ -430,6 +446,7 @@ def decide_mom_id(tracer):
     print(*tracer, sep='\n')
     print('\n')
 
+    ### 全フレームに対して処理
     for i in range(len(tracer)):             # 全フレームに対して
         momID = 0
         data = []
@@ -443,6 +460,7 @@ def decide_mom_id(tracer):
             for j in range(len(tracer[i])):     # i   の全重心
                 a = np.array(tracer[i][j])          # 現在の重心
                 print(f'maxID={maxID}')
+
                 for k in range(len(tracer_wID[i-1])):   # i-1 の全重心
                     try:
                         b = np.array([tracer_wID[i-1][k][1], tracer_wID[i-1][k][2], tracer_wID[i-1][k][3]])    # 1frame前の重心
@@ -469,7 +487,9 @@ def decide_mom_id(tracer):
 
         tracer_wID.append(data)     # 1frameの重心データ格納
         print(f'\n---tracer_wID frame={i}---')
-        print(f' {tracer_wID[i]}', sep='\n')
+        for j in range(len(tracer_wID[i])):
+            print(f'frame ={i:3d} ID ={tracer_wID[i][j][0]:2.0f} x = {tracer_wID[i][j][1]:7.3f} y = {tracer_wID[i][j][2]:7.3f} depth = {tracer_wID[i][j][3]:.4g}')
+    ###
 
     return tracer_wID
 ###
@@ -560,8 +580,11 @@ def run_kf(x0=(-10,0,27.,0), P=500, R=0, Q=0, dt=1.0, track=None, zs=None, count
     # # データが与えられないならobjのシミュレーションを実行する。
     # if zs is None:
     #     track, zs = compute_obj_data(R, Q, count)
+
     print('===run kalman filter===')
+    x0 = (zs[0][0],0,zs[0][1],0)
     # print(f'zs=\n{zs}')
+
     # カルマンフィルタを作成する。
     kf = pos_vel_filter(x0, R=R, P=P, Q=Q, dt=dt)
     # カルマンフィルタを実行し、結果を保存する。
@@ -600,7 +623,13 @@ def run_kf(x0=(-10,0,27.,0), P=500, R=0, Q=0, dt=1.0, track=None, zs=None, count
     return xs, cov
 ###
 
-
+###
+def output2csv(xs):
+    print(f'csv path:{csv_path}')
+    with open(csv_path, 'w+') as f:
+        writer = csv.writer(f)
+        writer.writerows(xs)
+###
 
 ### parameter
 class_idx_          =  8    # 抽出するクラス 3:human 8:car
@@ -616,6 +645,7 @@ watcher             = []    # テスト用
 fpath = './input_zu04a/d*'
 calib_path = './calibration_zu04a/cam_to_cam.yaml'
 calib_path_lidar = './calibration_zu04a/cam_to_lidar.yaml'
+csv_path = './output_csv/zu04a115.csv'
 ###
 def main():
     ### file name
