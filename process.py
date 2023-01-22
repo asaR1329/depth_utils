@@ -1,5 +1,5 @@
 ### python3 .py 'gray file name' 'ss file name' '時間幅'
-### 230120
+### 230122
 
 import numpy as np
 import pandas as pd
@@ -82,10 +82,8 @@ def clustering(img_ss, img_depth):
         if m == 440:        #error
             break
         for n in range(w):
-            if img_ss[m][n] == class_idx_:               #抽出するクラス選択
+            if img_ss[m][n] == class_idx_:       #抽出するクラス選択
                 img_cls[m][n] = car_color_       #クラス着色
-
-    # print('img_cls :', img_cls.shape)
 
     return img_cls
 ### -> clustering image
@@ -96,12 +94,13 @@ def mean_depth_bbox(img_dtc, dmap, cnt):
     bbx, bby, bbw, bbh = cv2.boundingRect(cnt)
     cv2.rectangle(img_dtc, (bbx,bby), (bbx+bbw-1,bby+bbh-1), car_color_-3, 1)
 
-    ### bb内のcarのdepthの平均算出
+    ### bb内のtarget classのdepth平均算出
     mndp        = 0 #平均depth
     count_dp_b  = 0 #点の数
     sum_dp_b    = 0 #depthの合計
     depth_clusters = [] # クラスター群
     dp = depthPoint(0, 0, 0)  #depth_cluster内の点
+    isClustering = False
     global watcher
 
     ### bb内の全pixelに対して
@@ -111,39 +110,48 @@ def mean_depth_bbox(img_dtc, dmap, cnt):
             try:    #配列外ならスキップ
                 dd = dmap[xm][ym] # ある点のdepthを抽出
 
+                ###
                 if dd!=0 and dd!=200: #depthが取れた点
-                    ### クラスター作成
+                    ### depthクラスター作成
                     dp = depthPoint(xm,ym,dd)
+                    isClustering = False
                     if len(depth_clusters)==0:
                         depth_clusters.append([[dp.x, dp.y, dp.d]])
-                        print(f'make cluster {depth_clusters}')
+                        print(f' make cluster d={dp.d:.2f}')
                     else:
-                        for i in range(len(depth_clusters)): # [[[xyz],[xyz],...],[...]]
+                        for i in range(len(depth_clusters)): # [[[xyz],[xyz],...],[...]] クラスター群探索
                             for j in range(len(depth_clusters[i])): # [[xyz],[xyz],...]
-                                if abs(depth_clusters[i][j][2]-dp.d)<=tolerance_pix_ :
+                                if abs(depth_clusters[i][j][2]-dp.d)<=5.0 and not(isClustering): # depthが近いものをクラスタリング
                                     depth_clusters[i].append([dp.x, dp.y, dp.d])
-                                    break
-                        # print(f'dclus={len(depth_clusters[i])}')
+                                    isClustering = True
+                        if isClustering==False:
+                            depth_clusters.append([[dp.x, dp.y, dp.d]])
+                            print(f' make cluster d={dp.d:.2f}')
 
                     if img_dtc[ym][xm]==car_color_ and dd<=max_range_: # 選択したクラスかつ max_range_以内の点を考慮
                         sum_dp_b += dd
-                        if dd > 0: count_dp_b += 1 #dephtが存在したら数える
+                        count_dp_b += 1 #dephtが存在したら数える
+
                     if img_dtc[ym][xm]==car_color_ and dmap[xm][ym]>0: watcher.append([xm, dmap[xm][ym]])
+                ###
 
             except IndexError:
                 pass
+
+    # depth clusterのprint
     for i in range(len(depth_clusters)):
-        print(f'{i} = {len(depth_clusters[i])} {depth_clusters[i][0][2]}')
+        print(f'  cluster{i} = count:{len(depth_clusters[i]):3d} depth:{depth_clusters[i][0][2]:.2f}')
     ###
 
     if count_dp_b==0:   # not /0
         count_dp_b = 1
 
-    mndp = sum_dp_b/count_dp_b
-    if count_dp_b<10: mndp=0
-    # else: show_scatter(watcher)
+    mndp = sum_dp_b/count_dp_b # depth ave 計算
+
+    # if count_dp_b<10: mndp=0
+
     watcher=[]
-    print(f' depth data : sum={sum_dp_b:8.2f} count={count_dp_b:3}')
+    print(f' target class depth data : sum={sum_dp_b:8.2f} count={count_dp_b:3}')
     ###
 
     return mndp
@@ -261,29 +269,27 @@ def img2world(moms):
                      [ 0, camera_info[1], camera_info[3]],
                      [ 0, 0, 1]]
                     )
-    ###
 
     ### cam2world
     calib2LiDAR = np.zeros((4,4))
     with open(calib_path_lidar) as fp:
         calib_data = yaml.safe_load(fp)
         c2l = calib_data['T_lidar_camRect1']
-    ###
 
     ###convert
     data = copy.deepcopy(moms) # copy
     for i in range(len(data)):
-        print(f'pre={moms[i]}')
+        print(f' pre:x = {moms[i][0]:3.0f} y = {moms[i][1]:3.0f} d = {moms[i][2]:5.2f}')
         data[i] = np.array(data[i])
         data[i][2] = 1          # [xi, yi, 1]
-        data[i] = np.dot(np.linalg.inv(calib2cam), data[i]) # 0.002Xi-0.6, 0.002Yi-0.4
+        data[i] = np.dot(np.linalg.inv(calib2cam), data[i])
         #
         moms[i][0] = data[i][0]
         moms[i][1] = data[i][1] # [X, Y, 1]
         # *= depth
         moms[i][0] *= moms[i][2]
-        moms[i][1] *= moms[i][2]
-        print(f' cnv={moms[i]}')
+        moms[i][1] *= moms[i][2]# [X, Y, Z]
+        print(f'  cnv:x = {moms[i][0]:5.2f} y = {moms[i][1]:5.2f} d = {moms[i][2]:5.2f}')
 
     return moms
 ### -> 座標変換した重心
@@ -331,11 +337,14 @@ def show_tracer(tracer_wID):
     plt.xlabel('y axis(m)')
     plt.ylabel('depth (m)')
 
+    # データ格納
     dx, dy = [], []
     op_x, op_y = [], []
+    count = 0
+    id_num = []
 
     try:
-        for ID in range(0,10): # 全IDに対して
+        for ID in range(20): # 全IDに対して
             dx, dy = [], []
             for i in range(len(tracer_wID)):
                 for j in range(len(tracer_wID[i])):
@@ -407,11 +416,17 @@ def show_scatter(data):
 ###
 
 ###
-def show_tracerwID(tracer_wID):
+def print_tracer(tracer):
+    for i in range(len(tracer)):
+        for j in range(len(tracer[i])):
+            print(f' x={tracer[i][j][0]:6.2f} y={tracer[i][j][1]:6.2f} depth={tracer[i][j][2]:6.2f}')
+###
+def print_tracerwID(tracer_wID):
     for i in range(len(tracer_wID)):
         for j in range(len(tracer_wID[i])):
-            print(f'frame ={i:3d} ID ={tracer_wID[i][j][0]:2.0f} x = {tracer_wID[i][j][1]:7.3f} y = {tracer_wID[i][j][2]:7.3f} depth = {tracer_wID[i][j][3]:.4g}')
+            print(f' frame ={i:3d} ID ={tracer_wID[i][j][0]:2.0f} x = {tracer_wID[i][j][1]:7.3f} y = {tracer_wID[i][j][2]:7.3f} depth = {tracer_wID[i][j][3]:.4g}')
 ###
+
 
 ###
 def show_result(tracer_wID, tracer):
@@ -433,7 +448,7 @@ def estimateMoms(gfname, ssfname):
 ### 重心距離から同一か判定
 def decide_mom_id(tracer):
     momID = 0
-    maxID = 0           # 最大のID
+    maxID_ = 0           # 最大のID
     data = []           # 1frameの重心とID格納
     tracer_wID = []     # IDつきの重心
 
@@ -443,8 +458,7 @@ def decide_mom_id(tracer):
 
     np.set_printoptions(precision=3, floatmode='fixed', suppress=True)
     print(f'\n---all car moment points(tracer)---')
-    print(*tracer, sep='\n')
-    print('\n')
+    print_tracer(tracer)
 
     ### 全フレームに対して処理
     for i in range(len(tracer)):             # 全フレームに対して
@@ -457,38 +471,40 @@ def decide_mom_id(tracer):
                 a = np.array(tracer[i][j])
                 data.append(np.append(momID,a))
         else:
-            for j in range(len(tracer[i])):     # i   の全重心
+            print(f' ### estimate ID frame={i}')
+            for j in range(len(tracer[i])):     # iの全重心に対して
                 a = np.array(tracer[i][j])          # 現在の重心
-                print(f'maxID={maxID}')
+                print(f'  maxID_={maxID_:2.0f}')
 
                 for k in range(len(tracer_wID[i-1])):   # i-1 の全重心
                     try:
                         b = np.array([tracer_wID[i-1][k][1], tracer_wID[i-1][k][2], tracer_wID[i-1][k][3]])    # 1frame前の重心
                         distance = np.linalg.norm(b-a)
                         np.set_printoptions(precision=3, floatmode='maxprec_equal', suppress=True)
-                        print(f' i={i} j(a)={j} k(b)={k} a={a} b={b} dist={distance:6.3f}')
+                        print(f'  f={i} a={j} b={k} a={a} b={b} dist={distance:6.3f}')
                         # 距離が閾値以下で同一物体
                         if distance<=tolerance:
                             momID = tracer_wID[i-1][k][0]
                             data.append(np.append(momID,a))
-                            if maxID < momID: maxID = momID
-                            print(f'     ^add id:{momID:2.0f}')
+                            if maxID_ < momID: maxID_ = momID
+                            print(f'      ^add id:{momID:2.0f}')
                             break
                         # 全重心を探索後同一物体でなければ,新しい物体にID追加
                         if k==len(tracer_wID[i-1])-1 :
-                            momID = maxID + 1
+                            momID = maxID_ + 1
                             data.append(np.append(momID,a))
-                            if maxID < momID: maxID = momID
-                            print(f'     ^new id:{momID:2.0f}')
+                            if maxID_ < momID: maxID_ = momID
+                            print(f'      ^new id:{momID:2.0f}')
 
                     except IndexError as e:
                         print(f'### indexError')
                         pass
 
         tracer_wID.append(data)     # 1frameの重心データ格納
+
         print(f'\n---tracer_wID frame={i}---')
         for j in range(len(tracer_wID[i])):
-            print(f'frame ={i:3d} ID ={tracer_wID[i][j][0]:2.0f} x = {tracer_wID[i][j][1]:7.3f} y = {tracer_wID[i][j][2]:7.3f} depth = {tracer_wID[i][j][3]:.4g}')
+            print(f' ID ={tracer_wID[i][j][0]:2.0f} x = {tracer_wID[i][j][1]:7.3f} y = {tracer_wID[i][j][2]:7.3f} depth = {tracer_wID[i][j][3]:.4g}')
     ###
 
     return tracer_wID
@@ -574,7 +590,7 @@ def pos_vel_filter(x, P, R, Q=0., dt=1.0):
 ###
 
 ###
-def run_kf(x0=(-10,0,27.,0), P=500, R=0, Q=0, dt=1.0, track=None, zs=None, count=0, do_plot=False, **kwargs):
+def run_kf(x0=(0,0,0,0), P=500, R=0, Q=0, dt=1.0, track=None, zs=None, count=0, do_plot=False, **kwargs):
     # track は実際の位置 zs は対応する観測値
 
     # # データが与えられないならobjのシミュレーションを実行する。
@@ -582,7 +598,7 @@ def run_kf(x0=(-10,0,27.,0), P=500, R=0, Q=0, dt=1.0, track=None, zs=None, count
     #     track, zs = compute_obj_data(R, Q, count)
 
     print('===run kalman filter===')
-    x0 = (zs[0][0],0,zs[0][1],0)
+    x0 = (zs[0][0],0,zs[0][1],-1)
     # print(f'zs=\n{zs}')
 
     # カルマンフィルタを作成する。
@@ -612,7 +628,7 @@ def run_kf(x0=(-10,0,27.,0), P=500, R=0, Q=0, dt=1.0, track=None, zs=None, count
         axW = figw.add_subplot(1,1,1)
         axW.set_xlim(-15,15)
         axW.set_ylim(-1,75) #depth
-        plt.xlabel('x axis')
+        plt.xlabel('y axis')
         plt.ylabel('depth')
         # plt.scatter(op_x, op_y, label='kf(xs)',color='b',s=5)
         plt.plot(op_x, op_y)
@@ -635,12 +651,13 @@ def output2csv(xs):
 class_idx_          =  8    # 抽出するクラス 3:human 8:car
 car_color_          = 20    # クラスタリングするときの色
 min_cluster_size_   = 20    # クラスタリングする点の最少数
-tolerance           =  4    # 同一物体と許容する距離
+tolerance           =  3    # 同一物体と許容する距離
 tolerance_pix_      = 25    # ver pixel
-max_range_          = 50    # 考慮する最大距離
+max_range_          = 60    # 考慮する最大距離
 tm_                 = 10    # 実行フレーム数
 number_image_       =  3    # nフレームごとに画像出力
-targetID_           =  4    # 追跡するID
+targetID_           = 13    # 追跡するID
+maxID_              =  0    # 最大のID
 watcher             = []    # テスト用
 fpath = './input_zu04a/d*'
 calib_path = './calibration_zu04a/cam_to_cam.yaml'
