@@ -12,11 +12,13 @@ import glob
 import math
 import os
 import re
+import rospy
 import sys
 import time
 import yaml
 from pathlib import Path
 from PIL import Image
+from nav_msgs.msg import Path
 from filterpy.kalman import predict, update
 from filterpy.kalman import KalmanFilter
 from filterpy.common import Q_discrete_white_noise
@@ -373,7 +375,7 @@ def show_tracer(tracer_wID):
     for i in range(len(tracer_wID)):
         for j in range(len(tracer_wID[i])):
             if tracer_wID[i][j][0]==targetID_:
-                dx = tracer_wID[i][j][1]
+                dx = -tracer_wID[i][j][1]
                 dy = tracer_wID[i][j][3]
                 zs.append(copy.deepcopy([dx,dy]))
                 print(f' dx={dx:7.3f}, dy={dy:7.3f}')
@@ -381,12 +383,9 @@ def show_tracer(tracer_wID):
     P = np.diag([1,1,1,1]) #位置と速度の共分散行列
     R = np.diag([1, 1])           #観測の共分散行列
     Ms, Ps = run_kf(count=200, R=R, Q=0.01, P=P, zs=zs, do_plot=True)
-
-    print(f'===output===')
-    output2csv(Ms)
     ###
 
-    return 0
+    return Ms
 ###
 
 ###
@@ -431,7 +430,78 @@ def print_tracerwID(tracer_wID):
 ###
 def show_result(tracer_wID, tracer):
     # show_scatter(tracer)
-    show_tracer(tracer_wID)
+    xs = show_tracer(tracer_wID)
+
+    return xs
+###
+
+### 状態 [x dx].T に対する定常速度モデルを実装する KalmanFilter を返す。 """
+def pos_vel_filter(x, P, R, Q=0., dt=1.0):
+
+    kf = KalmanFilter(dim_x=4, dim_z=2)
+    kf.x = np.array([x[0], x[1], x[2], x[3]]) # 位置と速度
+    kf.F = np.array([[1., dt, 0., 0.],
+                     [0., 1., 0., 0.],
+                     [0., 0., 1., dt],
+                     [0., 0., 0., 1.]])  # 状態遷移行列
+    kf.H = np.array([[1., 0, 0, 0],
+                     [0, 0, 1., 0]])    # 観測関数
+    kf.R *= R                     # 観測の不確実性
+    if np.isscalar(P):
+        kf.P *= P                 #状態の共分散行列
+    else:
+        kf.P[:] = P               # [:] を使ってディープコピー
+
+    if np.isscalar(Q):
+        kf.Q = Q_discrete_white_noise(dim=4, dt=dt, var=Q)
+    else:
+        kf.Q[:] = Q
+    return kf
+###
+
+###
+def run_kf(x0=(0,0,0,0), P=500, R=0, Q=0, dt=1.0, track=None, zs=None, count=0, do_plot=False, **kwargs):
+    print('===run kalman filter===')
+
+    # 初期状態
+    x0 = (zs[0][0],0,zs[0][1],-1)
+
+    # カルマンフィルタ作成
+    kf = pos_vel_filter(x0, R=R, P=P, Q=Q, dt=dt)
+    # カルマンフィルタを実行
+    xs, cov = [], []
+    for z in zs:
+        kf.predict()
+        kf.update(z)
+        xs.append(kf.x)
+        cov.append(kf.P)
+
+    xs, cov = np.array(xs), np.array(cov)
+    if do_plot:
+        op_x, op_y = [], []
+        gt_x, gt_y = [], []
+        me_x, me_y =[], []
+        for xn in xs:
+            op_x.append(xn[0])
+            op_y.append(xn[2])
+        for me in zs:
+            me_x.append(me[0])
+            me_y.append(me[1])
+
+        windowSize = 8
+        figw = plt.figure(figsize=(windowSize,windowSize))
+        axW = figw.add_subplot(1,1,1)
+        axW.set_xlim(-15,15)
+        axW.set_ylim(-1,75) #depth
+        plt.xlabel('y axis')
+        plt.ylabel('depth')
+        # plt.scatter(op_x, op_y, label='kf(xs)',color='b',s=5)
+        plt.plot(op_x, op_y)
+        plt.scatter(me_x, me_y, label='measurements(zs)',color='y',s=5)
+        plt.legend()
+        plt.show()
+
+    return xs, cov
 ###
 
 ### 1frameの処理まとめる
@@ -559,84 +629,12 @@ def make_tracer(fnumber, tm_):
     ###
 
     ### 軌跡表示
-    # show_tracer(tracer_wID)
-    show_result(tracer_wID, tracer)
+    xs = show_result(tracer_wID, tracer)
+
+    print(f'===output===')
+    output2csv(xs)
 
     return 0
-###
-
-### 状態 [x dx].T に対する定常速度モデルを実装する KalmanFilter を返す。 """
-def pos_vel_filter(x, P, R, Q=0., dt=1.0):
-
-    kf = KalmanFilter(dim_x=4, dim_z=2)
-    kf.x = np.array([x[0], x[1], x[2], x[3]]) # 位置と速度
-    kf.F = np.array([[1., dt, 0., 0.],
-                     [0., 1., 0., 0.],
-                     [0., 0., 1., dt],
-                     [0., 0., 0., 1.]])  # 状態遷移行列
-    kf.H = np.array([[1., 0, 0, 0],
-                     [0, 0, 1., 0]])    # 観測関数
-    kf.R *= R                     # 観測の不確実性
-    if np.isscalar(P):
-        kf.P *= P                 #状態の共分散行列
-    else:
-        kf.P[:] = P               # [:] を使ってディープコピー
-
-    if np.isscalar(Q):
-        kf.Q = Q_discrete_white_noise(dim=4, dt=dt, var=Q)
-    else:
-        kf.Q[:] = Q
-    return kf
-###
-
-###
-def run_kf(x0=(0,0,0,0), P=500, R=0, Q=0, dt=1.0, track=None, zs=None, count=0, do_plot=False, **kwargs):
-    # track は実際の位置 zs は対応する観測値
-
-    # # データが与えられないならobjのシミュレーションを実行する。
-    # if zs is None:
-    #     track, zs = compute_obj_data(R, Q, count)
-
-    print('===run kalman filter===')
-    x0 = (zs[0][0],0,zs[0][1],-1)
-    # print(f'zs=\n{zs}')
-
-    # カルマンフィルタを作成する。
-    kf = pos_vel_filter(x0, R=R, P=P, Q=Q, dt=dt)
-    # カルマンフィルタを実行し、結果を保存する。
-    xs, cov = [], []
-    for z in zs:
-        kf.predict()
-        kf.update(z)
-        xs.append(kf.x)
-        cov.append(kf.P)
-
-    xs, cov = np.array(xs), np.array(cov)
-    if do_plot:
-        op_x, op_y = [], []
-        gt_x, gt_y = [], []
-        me_x, me_y =[], []
-        for xn in xs:
-            op_x.append(xn[0])
-            op_y.append(xn[2])
-        for me in zs:
-            me_x.append(me[0])
-            me_y.append(me[1])
-
-        windowSize = 8
-        figw = plt.figure(figsize=(windowSize,windowSize))
-        axW = figw.add_subplot(1,1,1)
-        axW.set_xlim(-15,15)
-        axW.set_ylim(-1,75) #depth
-        plt.xlabel('y axis')
-        plt.ylabel('depth')
-        # plt.scatter(op_x, op_y, label='kf(xs)',color='b',s=5)
-        plt.plot(op_x, op_y)
-        plt.scatter(me_x, me_y, label='measurements(zs)',color='y',s=5)
-        plt.legend()
-        plt.show()
-
-    return xs, cov
 ###
 
 ###
@@ -647,12 +645,30 @@ def output2csv(xs):
         writer.writerows(xs)
 ###
 
+### ros message publish
+# def publish_path(xs):
+#     print(f'===publish path===')
+#     rospy.init_node('publisher')
+#     pub = rospy.Publisher('dvs_path', Path, queue_size=1)
+#     path = []
+#
+#     for ll in xs:
+#         path.append([-ll[0], ll[2]])
+#
+#     rate = rospy.Rate(5)
+#     while not rospy.is_shutdown():
+#         path_msg = path
+#         pub.publish(path_msg)
+#
+#         rate.sleep()
+###
+
 ### parameter
 class_idx_          =  8    # 抽出するクラス 3:human 8:car
 car_color_          = 20    # クラスタリングするときの色
 min_cluster_size_   = 20    # クラスタリングする点の最少数
 tolerance           =  3    # 同一物体と許容する距離
-tolerance_pix_      = 25    # ver pixel
+tolerance_pix_      = 25    #
 max_range_          = 60    # 考慮する最大距離
 tm_                 = 10    # 実行フレーム数
 number_image_       =  3    # nフレームごとに画像出力
@@ -667,7 +683,6 @@ csv_path = './output_csv/zu04a115.csv'
 def main():
     ### file name
     args = sys.argv
-
     fnumber = '000000'
     fnumber = args[1]
     timeWidth = args[2]
@@ -677,8 +692,8 @@ def main():
 
     ### 処理
     make_tracer(fnumber, tm_)
-###
 
+###
 if __name__ == "__main__":
     main()
 
