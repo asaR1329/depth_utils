@@ -1,5 +1,5 @@
 ### python3 .py 'gray file name' 'ss file name' '時間幅'
-### 230122
+### 230123
 
 import numpy as np
 import pandas as pd
@@ -121,8 +121,8 @@ def mean_depth_bbox(img_dtc, dmap, cnt):
 
                 ###
                 if dd!=0 and dd!=200: #depthが取れた点
-                    # watcher.append([xm, dd])
                     if img_dtc[ym][xm]==obj_color_ and dd<=max_range_: # 選択したクラスかつ max_range_以内の点を考慮
+                        watcher.append([xm, dd]) #
                         ### depthクラスター作成
                         dp = depthPoint(xm,ym,dd)
                         isClustering = False
@@ -153,9 +153,6 @@ def mean_depth_bbox(img_dtc, dmap, cnt):
             except IndexError:
                 pass
     ### bb内の探索終了
-
-    # show_scatter(watcher)
-    watcher=[]
 
     if count_dp_b==0:   # not /0
         count_dp_b = 1
@@ -222,6 +219,9 @@ def mean_depth_bbox(img_dtc, dmap, cnt):
     print(f' target class depth data : sum={sum_dp_b:8.2f} count={count_dp_b:3}')
     print(f' 200m : {trashed_count:5d}')
     print(f'   0m : {zero_count:5d}')
+    # show_scatter(watcher)
+    watcher=[]
+
     ###
 
     return mndp
@@ -404,7 +404,7 @@ def show_tracer(tracer_wID):
     axTr = figMom.add_subplot(1,1,1)
     axTr.set_title('Tracer')
     axTr.set_xlim(-15, 15)
-    axTr.set_ylim(-1, 50) #depth
+    axTr.set_ylim(-1, max_range_) #depth
     plt.xlabel('y axis(m)')
     plt.ylabel('depth (m)')
 
@@ -464,7 +464,7 @@ def show_scatter(data):
     axW = figw.add_subplot(1,1,1)
     axW.set_title('depth cloud')
     axW.set_xlim(0,640)
-    axW.set_ylim(-1,100) #depth
+    axW.set_ylim(-1,max_range_) #depth
     plt.xlabel('x (pixel)')
     plt.ylabel('depth (m)')
 
@@ -561,7 +561,7 @@ def run_kf(x0=(0,0,0,0), P=500, R=0, Q=0, dt=1.0, track=None, zs=None, count=0, 
         figw = plt.figure(figsize=(windowSize,windowSize))
         axW = figw.add_subplot(1,1,1)
         axW.set_xlim(-15,15)
-        axW.set_ylim(-1,75) #depth
+        axW.set_ylim(-1,max_range_) #depth
         plt.xlabel('x axis')
         plt.ylabel('depth')
         # plt.scatter(op_x, op_y, label='kf(xs)',color='b',s=5)
