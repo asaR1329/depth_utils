@@ -1,4 +1,4 @@
-### python3 load_depth_points.py
+### python3 load_depth_points.py 'input file path'
 
 import sys
 import re
@@ -6,28 +6,22 @@ import copy
 from pathlib import Path
 
 args = sys.argv
-fname = args[1]
-ifname = f'input/{fname}points.txt'
-ofname = f'output/{fname}.pcd'
-points_num = '0000'
-points = 0
+fpath = args[1]
+fname = 'output'
+ifname = f'{fpath}'
+ofpath = 'output_pcd'
+ofname = f'{ofpath}/{fname}.pcd'
 
 n=0
 num = 10
 dmap = []
 
-# print("---import datalist---")
-# print("n = x","c ","r","depth")
 with open(ifname) as fp:
     for ln in fp:
-        # print ("n =",n,ln.rstrip('\n'))     #情報表示
         data = ln.strip().split(' ')        #1列読み込み
         dmap.append(data);
         n+=1
-# print("---end input datalist---",*dmap, sep='\n')
-# print("---end input datalist---")
 
-# print("---start output map---")
 points_num = f'{n}'
 n=0
 o_dmap = []
@@ -38,7 +32,6 @@ try:
     with open(path_w,mode='x') as fp:
         print('ldp:make pcd')
 except FileExistsError:
-    # print('ldp:override pcd')
     pass
 
 ### データ出力 ###
@@ -50,23 +43,15 @@ with open(path_w, mode='r+') as fp:
     fp.write(f'VIEWPOINT 0 0 0 1 0 0 0\nPOINTS {points_num}\nDATA ascii\n')
     for ln in dmap:
 
-        # for k in range(3):
-            # o_data[k] = float(ln[k])
-            # if k==2:
-                # o_data[k]*=5
-
         o_data[0] = ( float(ln[2])+7 )/scale * 30   #z
         o_data[1] = (-float(ln[0])+300)/scale       #x
         o_data[2] = (-float(ln[1])+200)/scale       #y
 
         o_data[3] = float(ln[2]) #RGB8
-        # o_data[3] = 0 #RGB8
         o_dmap.append(copy.deepcopy(o_data))
-    # print("---end o_map---")
 
     for ll in o_dmap:
         print(*ll, sep=' ', file=fp) #ファイルに出力
-        # print(n+1, *ll, sep=' ')   #確認用
         n+=1
 
 print(f'---end output d_map {fname} {points_num}---')
