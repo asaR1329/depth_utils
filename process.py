@@ -10,6 +10,7 @@ import csv
 import cv2
 import glob
 import math
+import matplotlib
 import os
 import re
 import rospy
@@ -23,6 +24,8 @@ from nav_msgs.msg import Path
 from filterpy.kalman import predict, update
 from filterpy.kalman import KalmanFilter
 from filterpy.common import Q_discrete_white_noise
+
+matplotlib.use('TkAgg')
 
 class depthPoint:
     x = 0
@@ -103,7 +106,9 @@ def mean_depth_bbox(img_dtc, dmap, cnt):
     sum_dp_b    = 0 #depthの合計
     depth_clusters = [] # クラスター群
     dp = depthPoint(0, 0, 0)  #depth_cluster内の点
+    tr_count = 0
     isClustering = False
+    global watcher
 
     ### bb内の全pixelに対して
     # print(f' sampling bb')
@@ -115,6 +120,7 @@ def mean_depth_bbox(img_dtc, dmap, cnt):
 
                 ###
                 if dd!=0 and dd!=200: #depthが取れた点
+                    # watcher.append([xm, dd])
                     if img_dtc[ym][xm]==obj_color_ and dd<=max_range_: # 選択したクラスかつ max_range_以内の点を考慮
                         ### depthクラスター作成
                         dp = depthPoint(xm,ym,dd)
@@ -125,7 +131,7 @@ def mean_depth_bbox(img_dtc, dmap, cnt):
                         else:
                             for i in range(len(depth_clusters)): # [[[xyz],[xyz],...],[...]] クラスター群探索
                                 for j in range(len(depth_clusters[i])): # [[xyz],[xyz],...]
-                                    if abs(depth_clusters[i][j][2]-dp.d)<=5.0 and not(isClustering): # クラスタ間の距離5m
+                                    if abs(depth_clusters[i][j][2]-dp.d)<=tolerance_dc_ and not(isClustering): # クラスタ間の距離 tolerance_dc_
                                         depth_clusters[i].append([dp.x, dp.y, dp.d])
                                         isClustering = True
                             if isClustering==False: # 既存のクラスターに入らなかったら新しく作る
@@ -136,11 +142,16 @@ def mean_depth_bbox(img_dtc, dmap, cnt):
                         sum_dp_b += dd
                         count_dp_b += 1 #dephtが存在したら数える
                     ###
+                # else:
+                #     tr_count += 1
                 ###
 
             except IndexError:
                 pass
     ### bb内の探索終了
+
+    # show_scatter(watcher)
+    watcher=[]
 
     if count_dp_b==0:   # not /0
         count_dp_b = 1
@@ -148,22 +159,38 @@ def mean_depth_bbox(img_dtc, dmap, cnt):
     mndp = sum_dp_b/count_dp_b # depth ave 計算
 
     ### 最大数のクラスターを探してその平均をとる
-    if count_dp_b!=1:
-        max_idx = 0
-        max_count = 0
+    if count_dp_b!=1: # depthが取れているとき
+        max_idx = 0         # 最大数のインデックス
+        sub_max_idx = 0     # 2番め
+        max_count = 0       # 最大数
+        sub_max_count = 0   # 2
         sum_depth = 0
+        ave_depth = 0
         # depth clusterのprint
         for i in range(len(depth_clusters)):
-            print(f'  cluster{i} = count:{len(depth_clusters[i]):3d} depth:{depth_clusters[i][0][2]:.2f}')
+            for j in range(len(depth_clusters[i])):
+                ave_depth += depth_clusters[i][j][2]    # クラスターの平均depthを出す
+
             if len(depth_clusters[i]) > max_count:
-                    max_idx = i   # 最大数のインデックスを保存
-                    max_count = len(depth_clusters[i])
+                    sub_max_idx = max_idx               # most => sub
+                    max_idx = i                         # 最大数のインデックスを保存
+                    max_count = len(depth_clusters[i])  # 数を保存
+
+            ave_depth /= len(depth_clusters[i])
+            print(f'  cluster{i} = count:{len(depth_clusters[i]):3d} depth:{ave_depth:.2f}')
+            ave_depth = 0
+
+            # 平均depthの差が小さい && 少ない方のdepthが小さいとき．．．
+
         for i in range(len(depth_clusters[max_idx])):
             sum_depth += depth_clusters[max_idx][i][2]
-        mndp = sum_depth/max_count
+        mndp = sum_depth/max_count  # ave depth 計算
+    else:
+        print(' no depth"')
     ###
 
     print(f' target class depth data : sum={sum_dp_b:8.2f} count={count_dp_b:3}')
+    # print(f' cannot est points : {tr_count:4d}')
     ###
 
     return mndp
@@ -186,7 +213,6 @@ def mean_depth_mom(mom, dmap):
                 count_dp += 1
     if count_dp==0: count_dp = 1    #重心周りに点がない場合
     mdp = sum_dp/count_dp
-    if count_dp<10: mdp=0
 
     return mdp
 ###
@@ -251,7 +277,7 @@ def detection(img_cls, dmap):
 
                 print(f' contours length:', len(cnt))                       #輪郭のピクセル数
                 print(f' mom :', mom)
-                print(f' momdp meandp : {mdp:3.1f} {mndp:3.1f}')
+                print(f' momdp meandp : {mdp:5.21f} {mndp:5.21f}')
 
                 if mndp!=0: # 平均depthが０でないとき
                 # if True: # 平均depthが０でないとき
@@ -263,7 +289,7 @@ def detection(img_cls, dmap):
         else:
             print(f'not cluster')
 
-    print('\nNumber of Car =', count)
+    print('\nNumber of Object =', count)
     print('Moments :', moms)
 
     return moms, img_dtc
@@ -307,7 +333,7 @@ def img2world(moms):
 ### -> 座標変換した重心
 
 ### 出力画像の表示
-def show_images(img_ss, img_depth, img_cls, img_dtc):
+def show_images(frame, img_ss, img_depth, img_cls, img_dtc):
     windowSize=8
 
     ### 画像の表示
@@ -333,6 +359,8 @@ def show_images(img_ss, img_depth, img_cls, img_dtc):
     plt.imshow(img_dtc)
     ###
 
+    fig.suptitle(f"frame {frame}")
+    plt.get_current_fig_manager().window.wm_geometry('+500+300')
     plt.show(block=False)
     key = cv2.waitKey(0)
     if key==ord('d'): plt.close(fig)
@@ -403,11 +431,11 @@ def show_scatter(data):
     windowSize = 8
     figw = plt.figure(figsize=(windowSize,windowSize))
     axW = figw.add_subplot(1,1,1)
-    axW.set_title('watch')
-    # axW.set_xlim(0,640)
-    # axW.set_ylim(-1,200) #depth
-    plt.xlabel('x axis')
-    plt.ylabel('depth')
+    axW.set_title('depth cloud')
+    axW.set_xlim(0,640)
+    axW.set_ylim(-1,100) #depth
+    plt.xlabel('x (pixel)')
+    plt.ylabel('depth (m)')
 
     dx, dy = [], []
     op_x, op_y = [], []
@@ -419,7 +447,7 @@ def show_scatter(data):
     op_x.append(dx)
     op_y.append(dy)
 
-    plt.scatter(op_x, op_y, s=5)
+    plt.scatter(op_x, op_y, s=3)
     plt.show()
 
 ###
@@ -620,7 +648,7 @@ def make_tracer(fnumber, tm_):
             moms, img_ss, img_depth, img_cls, img_dtc = estimateMoms(gfname, ssfname)
             img2world(moms) # 座標変換
             tracer.append(moms)
-            if ll%number_image_==0: show_images(img_ss, img_depth, img_cls, img_dtc) # n frameごとに
+            if ll%number_image_==0: show_images(ll, img_ss, img_depth, img_cls, img_dtc) # n frameごとに
             ###
 
     except IndexError:
@@ -657,15 +685,16 @@ def output2csv(xs):
 ###
 
 ### parameter
-class_idx_          = 10    # 抽出するクラス 3:human 8:car 10:sign
+class_idx_          =  8    # 抽出するクラス 3:human 8:car 10:sign
 obj_color_          = 20    # クラスタリングするときの色
 min_cluster_size_   = 20    # クラスタリングする点の最少数
+tolerance_dc_       =  2    # depthクラスタリングの閾値
 tolerance           =  5    # 同一物体と許容する距離 04a11500:3 04a14000sign:5
 tolerance_pix_      = 25    # 画像座標で処理するとき
 max_range_          = 60    # 考慮する最大距離
 tm_                 = 10    # 実行フレーム数
-number_image_       =  3    # nフレームごとに画像出力
-targetID_           =  2    # 追跡するID
+number_image_       =  2    # nフレームごとに画像出力
+targetID_           =  1    # 追跡するID
 maxID_              =  0    # 最大のID
 watcher             = []    # テスト用
 fpath = './input_zu04a/d*'
