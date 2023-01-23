@@ -106,7 +106,8 @@ def mean_depth_bbox(img_dtc, dmap, cnt):
     sum_dp_b    = 0 #depthの合計
     depth_clusters = [] # クラスター群
     dp = depthPoint(0, 0, 0)  #depth_cluster内の点
-    tr_count = 0
+    trashed_count = 0
+    zero_count = 0
     isClustering = False
     global watcher
 
@@ -142,8 +143,11 @@ def mean_depth_bbox(img_dtc, dmap, cnt):
                         sum_dp_b += dd
                         count_dp_b += 1 #dephtが存在したら数える
                     ###
-                # else:
-                #     tr_count += 1
+                elif dd==200:
+                    trashed_count += 1
+                else:
+                    zero_count += 1
+
                 ###
 
             except IndexError:
@@ -166,31 +170,58 @@ def mean_depth_bbox(img_dtc, dmap, cnt):
         sub_max_count = 0   # 2
         sum_depth = 0
         ave_depth = 0
-        # depth clusterのprint
+        ave_depths = []
+        sub_ave_depth = 0   #
+
+        ### clusterの平均depth計算，最大のcluster，depth clusterのprint
         for i in range(len(depth_clusters)):
             for j in range(len(depth_clusters[i])):
                 ave_depth += depth_clusters[i][j][2]    # クラスターの平均depthを出す
 
-            if len(depth_clusters[i]) > max_count:
-                    sub_max_idx = max_idx               # most => sub
+            ave_depth /= len(depth_clusters[i])         # 平均depth
+            ave_depths.append(ave_depth)
+
+            if len(depth_clusters[i]) > max_count:      # 点の数が多いとき
+                    sub_ave_depth = ave_depth           # 二番目に多いクラスタの平均depth保存
+                    sub_max_idx = max_idx               # most => sub idx
+                    sub_max_count = max_count
                     max_idx = i                         # 最大数のインデックスを保存
                     max_count = len(depth_clusters[i])  # 数を保存
+            elif len(depth_clusters[i]) > sub_max_count:
+                    sub_ave_depth = ave_depth
+                    sub_max_idx = i
+                    sub_max_count = len(depth_clusters[i])
 
-            ave_depth /= len(depth_clusters[i])
             print(f'  cluster{i} = count:{len(depth_clusters[i]):3d} depth:{ave_depth:.2f}')
             ave_depth = 0
 
-            # 平均depthの差が小さい && 少ない方のdepthが小さいとき．．．
-
+        ### 最終的な平均depth
         for i in range(len(depth_clusters[max_idx])):
             sum_depth += depth_clusters[max_idx][i][2]
+
         mndp = sum_depth/max_count  # ave depth 計算
+        ###
+
+        ### process car02
+        ### countが一定数以上 && 少ない方のdepthが小さいとき．．．
+        ### 1frame前のもっともらしい点を探す
+        threshold_count = 20
+        print(f'   sub={sub_max_idx} subave={sub_ave_depth:6.3f}')
+        # if len(depth_clusters[sub_max_idx])>=threshold_count and sub_ave_depth<20:
+            # mndp = sub_ave_depth
+            # print(f'   change mndp: {mndp:5.2f}')
+        for i in range(len(depth_clusters)):
+            if len(depth_clusters[i])>=threshold_count and ave_depths[i]<12:
+                mndp = ave_depths[i]
+                print(f'   change mndp: {mndp:5.2f}')
+
     else:
         print(' no depth"')
     ###
 
     print(f' target class depth data : sum={sum_dp_b:8.2f} count={count_dp_b:3}')
-    # print(f' cannot est points : {tr_count:4d}')
+    print(f' 200m : {trashed_count:5d}')
+    print(f'   0m : {zero_count:5d}')
     ###
 
     return mndp
@@ -223,7 +254,7 @@ def isCar(img_dtc, cnt, mom, min_cluster_size_, count):
 
     if len(cnt) > min_cluster_size_:
         count += 1
-        print(f' obj number {count}')
+        print(f' obj number : {count}')
         cv2.putText(img_dtc, f'Obj {count}', (mom[0],mom[1]), font, 0.5, (255))
 
     return count
@@ -277,7 +308,7 @@ def detection(img_cls, dmap):
 
                 print(f' contours length:', len(cnt))                       #輪郭のピクセル数
                 print(f' mom :', mom)
-                print(f' momdp meandp : {mdp:5.21f} {mndp:5.21f}')
+                print(f' momdp meandp : {mdp:5.2f} {mndp:5.2f}')
 
                 if mndp!=0: # 平均depthが０でないとき
                 # if True: # 平均depthが０でないとき
@@ -287,7 +318,7 @@ def detection(img_cls, dmap):
             except ZeroDivisionError:
                 pass
         else:
-            print(f'not cluster')
+            print(f' not cluster')
 
     print('\nNumber of Object =', count)
     print('Moments :', moms)
@@ -502,7 +533,7 @@ def run_kf(x0=(0,0,0,0), P=500, R=0, Q=0, dt=1.0, track=None, zs=None, count=0, 
     print('===run kalman filter===')
 
     # 初期状態
-    x0 = (zs[0][0],0,zs[0][1],-1)
+    x0 = (zs[0][0],0,zs[0][1],0)
 
     # カルマンフィルタ作成
     kf = pos_vel_filter(x0, R=R, P=P, Q=Q, dt=dt)
@@ -531,7 +562,7 @@ def run_kf(x0=(0,0,0,0), P=500, R=0, Q=0, dt=1.0, track=None, zs=None, count=0, 
         axW = figw.add_subplot(1,1,1)
         axW.set_xlim(-15,15)
         axW.set_ylim(-1,75) #depth
-        plt.xlabel('y axis')
+        plt.xlabel('x axis')
         plt.ylabel('depth')
         # plt.scatter(op_x, op_y, label='kf(xs)',color='b',s=5)
         plt.plot(op_x, op_y)
@@ -689,12 +720,12 @@ class_idx_          =  8    # 抽出するクラス 3:human 8:car 10:sign
 obj_color_          = 20    # クラスタリングするときの色
 min_cluster_size_   = 20    # クラスタリングする点の最少数
 tolerance_dc_       =  2    # depthクラスタリングの閾値
-tolerance           =  5    # 同一物体と許容する距離 04a11500:3 04a14000sign:5
+tolerance           =  2    # 同一物体と許容する距離 04a11500:3 04a14000sign:5
 tolerance_pix_      = 25    # 画像座標で処理するとき
 max_range_          = 60    # 考慮する最大距離
 tm_                 = 10    # 実行フレーム数
 number_image_       =  2    # nフレームごとに画像出力
-targetID_           =  1    # 追跡するID
+targetID_           =  2    # 追跡するID
 maxID_              =  0    # 最大のID
 watcher             = []    # テスト用
 fpath = './input_zu04a/d*'
