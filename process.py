@@ -15,6 +15,7 @@ import re
 import rospy
 import sys
 import time
+import traceback
 import yaml
 from pathlib import Path
 from PIL import Image
@@ -85,16 +86,16 @@ def clustering(img_ss, img_depth):
             break
         for n in range(w):
             if img_ss[m][n] == class_idx_:       #抽出するクラス選択
-                img_cls[m][n] = car_color_       #クラス着色
+                img_cls[m][n] = obj_color_       #クラス着色
 
     return img_cls
 ### -> clustering image
 
-### bb内のcarのdepthの平均算出
+### bb内のobjのdepthの平均算出
 def mean_depth_bbox(img_dtc, dmap, cnt):
     ### bb作成
     bbx, bby, bbw, bbh = cv2.boundingRect(cnt)
-    cv2.rectangle(img_dtc, (bbx,bby), (bbx+bbw-1,bby+bbh-1), car_color_-3, 1)
+    cv2.rectangle(img_dtc, (bbx,bby), (bbx+bbw-1,bby+bbh-1), obj_color_-3, 1)
 
     ### bb内のtarget classのdepth平均算出
     mndp        = 0 #平均depth
@@ -103,9 +104,9 @@ def mean_depth_bbox(img_dtc, dmap, cnt):
     depth_clusters = [] # クラスター群
     dp = depthPoint(0, 0, 0)  #depth_cluster内の点
     isClustering = False
-    global watcher
 
     ### bb内の全pixelに対して
+    # print(f' sampling bb')
     for xm in range(bbx, bbx+bbw-1):
         for ym in range(bby, bby+bbh-1):
 
@@ -114,45 +115,54 @@ def mean_depth_bbox(img_dtc, dmap, cnt):
 
                 ###
                 if dd!=0 and dd!=200: #depthが取れた点
-                    ### depthクラスター作成
-                    dp = depthPoint(xm,ym,dd)
-                    isClustering = False
-                    if len(depth_clusters)==0:
-                        depth_clusters.append([[dp.x, dp.y, dp.d]])
-                        print(f' make cluster d={dp.d:.2f}')
-                    else:
-                        for i in range(len(depth_clusters)): # [[[xyz],[xyz],...],[...]] クラスター群探索
-                            for j in range(len(depth_clusters[i])): # [[xyz],[xyz],...]
-                                if abs(depth_clusters[i][j][2]-dp.d)<=5.0 and not(isClustering): # depthが近いものをクラスタリング
-                                    depth_clusters[i].append([dp.x, dp.y, dp.d])
-                                    isClustering = True
-                        if isClustering==False:
+                    if img_dtc[ym][xm]==obj_color_ and dd<=max_range_: # 選択したクラスかつ max_range_以内の点を考慮
+                        ### depthクラスター作成
+                        dp = depthPoint(xm,ym,dd)
+                        isClustering = False
+                        if len(depth_clusters)==0:
                             depth_clusters.append([[dp.x, dp.y, dp.d]])
                             print(f' make cluster d={dp.d:.2f}')
-
-                    if img_dtc[ym][xm]==car_color_ and dd<=max_range_: # 選択したクラスかつ max_range_以内の点を考慮
+                        else:
+                            for i in range(len(depth_clusters)): # [[[xyz],[xyz],...],[...]] クラスター群探索
+                                for j in range(len(depth_clusters[i])): # [[xyz],[xyz],...]
+                                    if abs(depth_clusters[i][j][2]-dp.d)<=5.0 and not(isClustering): # クラスタ間の距離5m
+                                        depth_clusters[i].append([dp.x, dp.y, dp.d])
+                                        isClustering = True
+                            if isClustering==False: # 既存のクラスターに入らなかったら新しく作る
+                                depth_clusters.append([[dp.x, dp.y, dp.d]])
+                                print(f' make cluster d={dp.d:.2f}')
+                        ###
+                        # 平均depth算出
                         sum_dp_b += dd
                         count_dp_b += 1 #dephtが存在したら数える
-
-                    if img_dtc[ym][xm]==car_color_ and dmap[xm][ym]>0: watcher.append([xm, dmap[xm][ym]])
+                    ###
                 ###
 
             except IndexError:
                 pass
-
-    # depth clusterのprint
-    for i in range(len(depth_clusters)):
-        print(f'  cluster{i} = count:{len(depth_clusters[i]):3d} depth:{depth_clusters[i][0][2]:.2f}')
-    ###
+    ### bb内の探索終了
 
     if count_dp_b==0:   # not /0
         count_dp_b = 1
 
     mndp = sum_dp_b/count_dp_b # depth ave 計算
 
-    # if count_dp_b<10: mndp=0
+    ### 最大数のクラスターを探してその平均をとる
+    if count_dp_b!=1:
+        max_idx = 0
+        max_count = 0
+        sum_depth = 0
+        # depth clusterのprint
+        for i in range(len(depth_clusters)):
+            print(f'  cluster{i} = count:{len(depth_clusters[i]):3d} depth:{depth_clusters[i][0][2]:.2f}')
+            if len(depth_clusters[i]) > max_count:
+                    max_idx = i   # 最大数のインデックスを保存
+                    max_count = len(depth_clusters[i])
+        for i in range(len(depth_clusters[max_idx])):
+            sum_depth += depth_clusters[max_idx][i][2]
+        mndp = sum_depth/max_count
+    ###
 
-    watcher=[]
     print(f' target class depth data : sum={sum_dp_b:8.2f} count={count_dp_b:3}')
     ###
 
@@ -187,8 +197,8 @@ def isCar(img_dtc, cnt, mom, min_cluster_size_, count):
 
     if len(cnt) > min_cluster_size_:
         count += 1
-        print(f' car number {count}')
-        cv2.putText(img_dtc, f'CAR {count}', (mom[0],mom[1]), font, 0.5, (255))
+        print(f' obj number {count}')
+        cv2.putText(img_dtc, f'Obj {count}', (mom[0],mom[1]), font, 0.5, (255))
 
     return count
 ###
@@ -208,7 +218,7 @@ def detection(img_cls, dmap):
     moms     = []                       #計算したすべての重心を格納
 
     ### 輪郭探索
-    _, threshold = cv2.threshold(img_dtc, car_color_-1, car_color_+1, cv2.THRESH_BINARY)        #閾値
+    _, threshold = cv2.threshold(img_dtc, obj_color_-1, obj_color_+1, cv2.THRESH_BINARY)        #閾値
     contours, hierarchy = cv2.findContours(threshold, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)   #輪郭探索
 
     ### それぞれの輪郭に対して処理
@@ -375,7 +385,7 @@ def show_tracer(tracer_wID):
     for i in range(len(tracer_wID)):
         for j in range(len(tracer_wID[i])):
             if tracer_wID[i][j][0]==targetID_:
-                dx = -tracer_wID[i][j][1]
+                dx = -tracer_wID[i][j][1] # 符号逆
                 dy = tracer_wID[i][j][3]
                 zs.append(copy.deepcopy([dx,dy]))
                 print(f' dx={dx:7.3f}, dy={dy:7.3f}')
@@ -615,6 +625,7 @@ def make_tracer(fnumber, tm_):
 
     except IndexError:
         print('\n===tracer (index error)===')
+        print(traceback.format_exc())
         print(*tracer, sep='\n')
 
     ### id配布
@@ -645,40 +656,22 @@ def output2csv(xs):
         writer.writerows(xs)
 ###
 
-### ros message publish
-# def publish_path(xs):
-#     print(f'===publish path===')
-#     rospy.init_node('publisher')
-#     pub = rospy.Publisher('dvs_path', Path, queue_size=1)
-#     path = []
-#
-#     for ll in xs:
-#         path.append([-ll[0], ll[2]])
-#
-#     rate = rospy.Rate(5)
-#     while not rospy.is_shutdown():
-#         path_msg = path
-#         pub.publish(path_msg)
-#
-#         rate.sleep()
-###
-
 ### parameter
-class_idx_          =  8    # 抽出するクラス 3:human 8:car
-car_color_          = 20    # クラスタリングするときの色
+class_idx_          = 10    # 抽出するクラス 3:human 8:car 10:sign
+obj_color_          = 20    # クラスタリングするときの色
 min_cluster_size_   = 20    # クラスタリングする点の最少数
-tolerance           =  3    # 同一物体と許容する距離
-tolerance_pix_      = 25    #
+tolerance           =  5    # 同一物体と許容する距離 04a11500:3 04a14000sign:5
+tolerance_pix_      = 25    # 画像座標で処理するとき
 max_range_          = 60    # 考慮する最大距離
 tm_                 = 10    # 実行フレーム数
 number_image_       =  3    # nフレームごとに画像出力
-targetID_           = 13    # 追跡するID
+targetID_           =  2    # 追跡するID
 maxID_              =  0    # 最大のID
 watcher             = []    # テスト用
 fpath = './input_zu04a/d*'
 calib_path = './calibration_zu04a/cam_to_cam.yaml'
 calib_path_lidar = './calibration_zu04a/cam_to_lidar.yaml'
-csv_path = './output_csv/zu04a115.csv'
+csv_path = './output_csv/zu04a.csv'
 ###
 def main():
     ### file name
