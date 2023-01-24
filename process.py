@@ -158,6 +158,7 @@ def mean_depth_bbox(img_dtc, dmap, cnt):
         count_dp_b = 1
 
     mndp = sum_dp_b/count_dp_b # depth ave 計算
+    print(f' mndp:{mndp:6.3f}')
 
     ### 最大数のクラスターを探してその平均をとる
     if count_dp_b!=1: # depthが取れているとき
@@ -174,22 +175,23 @@ def mean_depth_bbox(img_dtc, dmap, cnt):
         for i in range(len(depth_clusters)):
             for j in range(len(depth_clusters[i])):
                 ave_depth += depth_clusters[i][j][2]    # クラスターの平均depthを出す
+            ###
 
             ave_depth /= len(depth_clusters[i])         # 平均depth
             ave_depths.append(ave_depth)
 
             if len(depth_clusters[i]) > max_count:      # 点の数が多いとき
-                    sub_ave_depth = ave_depth           # 二番目に多いクラスタの平均depth保存
-                    sub_max_idx = max_idx               # most => sub idx
-                    sub_max_count = max_count
-                    max_idx = i                         # 最大数のインデックスを保存
-                    max_count = len(depth_clusters[i])  # 数を保存
+                sub_ave_depth = ave_depth           # 二番目に多いクラスタの平均depth保存
+                sub_max_idx = max_idx               # most => sub idx
+                sub_max_count = max_count
+                max_idx = i                         # 最大数のインデックスを保存
+                max_count = len(depth_clusters[i])  # 数を保存
             elif len(depth_clusters[i]) > sub_max_count:
-                    sub_ave_depth = ave_depth
-                    sub_max_idx = i
-                    sub_max_count = len(depth_clusters[i])
+                sub_ave_depth = ave_depth
+                sub_max_idx = i
+                sub_max_count = len(depth_clusters[i])
 
-            print(f'  cluster{i} = count:{len(depth_clusters[i]):3d} depth:{ave_depth:.2f}')
+            print(f'  cluster{i} = count:{len(depth_clusters[i]):3d} average depth:{ave_depth:.2f}')
             ave_depth = 0
 
         ### 最終的な平均depth
@@ -197,23 +199,27 @@ def mean_depth_bbox(img_dtc, dmap, cnt):
             sum_depth += depth_clusters[max_idx][i][2]
 
         mndp = sum_depth/max_count  # ave depth 計算
+        print(f' filtered mndp:{mndp:6.3f}')
         ###
 
         ### process car02
         ### countが一定数以上 && 少ない方のdepthが小さいとき．．．
         ### 1frame前のもっともらしい点を探す
-        threshold_count = 20
-        print(f'   sub={sub_max_idx} subave={sub_ave_depth:6.3f}')
+        # threshold_count = 20
+        # print(f'   sub={sub_max_idx} subave={sub_ave_depth:6.3f}')
+         ## process car02-a
         # if len(depth_clusters[sub_max_idx])>=threshold_count and sub_ave_depth<20:
-            # mndp = sub_ave_depth
-            # print(f'   change mndp: {mndp:5.2f}')
-        for i in range(len(depth_clusters)):
-            if len(depth_clusters[i])>=threshold_count and ave_depths[i]<12:
-                mndp = ave_depths[i]
-                print(f'   change mndp: {mndp:5.2f}')
+        #     mndp = sub_ave_depth
+        #     print(f'   change mndp: {mndp:5.2f}')
+         ## process car02-test
+        # for i in range(len(depth_clusters)):
+        #     if len(depth_clusters[i])>=threshold_count and ave_depths[i]<12:
+        #         mndp = ave_depths[i]
+        #         print(f'   change mndp: {mndp:5.2f}')
+        ###
 
     else:
-        print(' no depth"')
+        print(' no depth')
     ###
 
     print(f' target class depth data : sum={sum_dp_b:8.2f} count={count_dp_b:3}')
@@ -716,9 +722,9 @@ def output2csv(xs):
 ###
 
 ### parameter
-class_idx_          =  8    # 抽出するクラス 3:human 8:car 10:sign
+class_idx_          =  3    # 抽出するクラス 3:human 8:car 10:sign
 obj_color_          = 20    # クラスタリングするときの色
-min_cluster_size_   = 20    # クラスタリングする点の最少数
+min_cluster_size_   = 20    # クラスタリングする点の最少数 car:20 sign:20 human:
 tolerance_dc_       =  2    # depthクラスタリングの閾値
 tolerance           =  2    # 同一物体と許容する距離 04a11500:3 04a14000sign:5
 tolerance_pix_      = 25    # 画像座標で処理するとき
